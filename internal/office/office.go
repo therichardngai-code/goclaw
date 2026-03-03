@@ -6,12 +6,11 @@ import (
 )
 
 // Office is the top-level controller for the Agent Office feature.
-// It owns the in-memory state and coordinates the SSE hub and event bridge.
-// Hub and Bridge fields are wired in by later phases (Phase 3 and Phase 2).
+// It owns the in-memory state and the SSE hub.
+// The event Bridge is wired externally by the gateway (Phase 6).
 type Office struct {
 	State *OfficeState
-	// Hub  *SSEHub  — added in Phase 3
-	// bridge *Bridge — added in Phase 2
+	Hub   *SSEHub
 }
 
 // AgentSeed is the minimal info needed to pre-populate an agent desk on startup.
@@ -28,7 +27,10 @@ func New(version, mode string) *Office {
 	state.Gateway.Version = version
 	state.Gateway.Mode = mode
 
-	return &Office{State: state}
+	return &Office{
+		State: state,
+		Hub:   NewSSEHub(),
+	}
 }
 
 // SeedAgents pre-populates agent desks from known agents at startup.
@@ -40,13 +42,13 @@ func (o *Office) SeedAgents(seeds []AgentSeed) {
 	}
 }
 
-// Start blocks until ctx is cancelled. Intended to be called in a goroutine.
-// Phase 3 will replace the body with o.Hub.Run(ctx).
+// Start runs the SSE hub loop. Blocks until ctx is cancelled.
+// Call in a dedicated goroutine: go office.Start(ctx)
 func (o *Office) Start(ctx context.Context) {
 	slog.Info("office.started",
 		"version", o.State.Gateway.Version,
 		"mode", o.State.Gateway.Mode,
 	)
-	<-ctx.Done()
+	o.Hub.Run(ctx)
 	slog.Info("office.stopped")
 }
