@@ -43,6 +43,7 @@ type Server struct {
 	delegationsHandler      *httpapi.DelegationsHandler      // managed mode: delegation history API
 	builtinToolsHandler     *httpapi.BuiltinToolsHandler     // managed mode: builtin tool management API
 	agentStore         store.AgentStore             // managed mode: for context injection in tools_invoke
+	officeHandler      interface{ RegisterRoutes(*http.ServeMux) } // agent office UI (optional)
 
 	upgrader    websocket.Upgrader
 	rateLimiter *RateLimiter
@@ -185,6 +186,11 @@ func (s *Server) BuildMux() *http.ServeMux {
 		s.builtinToolsHandler.RegisterRoutes(mux)
 	}
 
+	// Agent Office UI (all modes)
+	if s.officeHandler != nil {
+		s.officeHandler.RegisterRoutes(mux)
+	}
+
 	s.mux = mux
 	return mux
 }
@@ -282,6 +288,12 @@ func (s *Server) SetBuiltinToolsHandler(h *httpapi.BuiltinToolsHandler) {
 
 // SetAgentStore sets the agent store for context injection in tools_invoke.
 func (s *Server) SetAgentStore(as store.AgentStore) { s.agentStore = as }
+
+// SetOfficeHandler sets the Agent Office UI handler. Uses an interface to avoid
+// importing internal/office from internal/gateway.
+func (s *Server) SetOfficeHandler(h interface{ RegisterRoutes(*http.ServeMux) }) {
+	s.officeHandler = h
+}
 
 // BroadcastEvent sends an event to all connected clients.
 func (s *Server) BroadcastEvent(event protocol.EventFrame) {

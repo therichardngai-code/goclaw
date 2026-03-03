@@ -12,6 +12,7 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/agent"
 	"github.com/nextlevelbuilder/goclaw/internal/bootstrap"
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
+	"github.com/nextlevelbuilder/goclaw/internal/office"
 	"github.com/nextlevelbuilder/goclaw/internal/channels"
 	"github.com/nextlevelbuilder/goclaw/internal/channels/discord"
 	"github.com/nextlevelbuilder/goclaw/internal/channels/feishu"
@@ -606,6 +607,29 @@ func runGateway() {
 	server.SetPolicyEngine(permPE)
 	server.SetPairingService(pairingStore)
 
+	// --- Agent Office (setup) ---
+	// Objects created here; hub goroutine started after ctx is available (below).
+	officeMode := "standalone"
+	if cfg.Database.Mode == "managed" {
+		officeMode = "managed"
+	}
+	ofc := office.New(Version, officeMode)
+	officeBridge := office.NewBridge(ofc.State, ofc.Hub, msgBus)
+	officeBridge.Start()
+	defer officeBridge.Stop()
+
+	// Standalone mode: seed known agents immediately (router already populated above).
+	// Managed mode: agents self-register via bus events, no seeding needed.
+	if officeMode == "standalone" {
+		agentInfos := agentRouter.ListInfo()
+		seeds := make([]office.AgentSeed, len(agentInfos))
+		for i, info := range agentInfos {
+			seeds[i] = office.AgentSeed{ID: info.ID, Name: info.ID, Model: info.Model}
+		}
+		ofc.SeedAgents(seeds)
+	}
+	server.SetOfficeHandler(office.NewHandler(ofc, cfg.Gateway.Token))
+
 	// contextFileInterceptor is created inside wireManagedExtras (managed mode only).
 	// Declared here so it can be passed to registerAllMethods → AgentsMethods
 	// for immediate cache invalidation on agents.files.set.
@@ -833,6 +857,9 @@ func runGateway() {
 	// Setup graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Start Agent Office SSE hub (needs ctx for clean shutdown).
+	go ofc.Start(ctx)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)

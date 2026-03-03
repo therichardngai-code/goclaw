@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GoClaw Agent Office</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #1a1a2e; color: #e0e0e0;
+      min-height: 100vh; display: flex; flex-direction: column;
+    }
+    .header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 16px 24px; background: #16213e; border-bottom: 1px solid #0f3460;
+    }
+    .header h1 { font-size: 20px; font-weight: 600; color: #e94560; }
+    .conn-status { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #666; }
+    .status-dot.connected { background: #4ecca3; }
+    .status-dot.disconnected { background: #e94560; }
+    .status-dot.connecting { background: #f0a500; animation: pulse 1s infinite; }
+    .main {
+      flex: 1; display: grid; grid-template-columns: 1fr 300px;
+      gap: 16px; padding: 16px 24px; overflow: hidden;
+    }
+    .floor { display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
+    .gateway-desk {
+      background: #16213e; border: 2px solid #f0a500;
+      border-radius: 12px; padding: 20px;
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px;
+    }
+    .gateway-desk .label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+    .gateway-desk .value { font-size: 18px; font-weight: 600; color: #f0a500; margin-top: 2px; }
+    .health-ok { color: #4ecca3 !important; }
+    .health-bad { color: #e94560 !important; }
+    .agent-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;
+    }
+    .agent-desk {
+      background: #16213e; border: 1px solid #0f3460; border-radius: 10px;
+      padding: 16px; transition: border-color 0.3s, box-shadow 0.3s;
+      position: relative; overflow: hidden;
+    }
+    .agent-desk.state-thinking  { border-color: #4ecca3; box-shadow: 0 0 12px rgba(78,204,163,0.15); }
+    .agent-desk.state-responding { border-color: #3498db; box-shadow: 0 0 12px rgba(52,152,219,0.15); }
+    .agent-desk.state-tool_calling { border-color: #f0a500; box-shadow: 0 0 12px rgba(240,165,0,0.15); }
+    .agent-desk.state-error     { border-color: #e94560; box-shadow: 0 0 12px rgba(233,69,96,0.15); }
+    .agent-desk.state-receiving { border-color: #00d2ff; }
+    .agent-desk.state-thinking::after, .agent-desk.state-responding::after {
+      content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent);
+      animation: shimmer 2s infinite;
+    }
+    .agent-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .agent-name { font-size: 15px; font-weight: 600; }
+    .agent-model {
+      font-size: 11px; background: #0f3460; padding: 2px 8px;
+      border-radius: 4px; color: #7ec8e3;
+    }
+    .agent-state { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-bottom: 8px; }
+    .state-dot { width: 8px; height: 8px; border-radius: 50%; background: #666; }
+    .state-dot.idle        { background: #666; }
+    .state-dot.thinking    { background: #4ecca3; animation: pulse 1.2s infinite; }
+    .state-dot.responding  { background: #3498db; animation: pulse 0.8s infinite; }
+    .state-dot.tool_calling { background: #f0a500; animation: pulse 1s infinite; }
+    .state-dot.error       { background: #e94560; }
+    .state-dot.receiving   { background: #00d2ff; animation: pulse 1s infinite; }
+    .speech-bubble {
+      background: #0f3460; border-radius: 8px; padding: 8px 12px;
+      font-size: 12px; color: #aaa; margin-bottom: 8px;
+      word-break: break-word; display: none;
+    }
+    .speech-bubble.active { display: block; }
+    .agent-stats { display: flex; gap: 12px; font-size: 11px; color: #666; }
+    .notifications {
+      background: #16213e; border: 1px solid #0f3460; border-radius: 10px;
+      padding: 12px; overflow-y: auto; display: flex; flex-direction: column;
+    }
+    .notifications h3 {
+      font-size: 13px; text-transform: uppercase; letter-spacing: 1px;
+      color: #888; margin-bottom: 10px; flex-shrink: 0;
+    }
+    .notif-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+    .notif-item {
+      font-size: 12px; padding: 6px 8px; background: #1a1a2e;
+      border-radius: 6px; border-left: 3px solid #0f3460;
+    }
+    .notif-item.run\.started  { border-left-color: #4ecca3; }
+    .notif-item.run\.completed { border-left-color: #3498db; }
+    .notif-item.run\.failed   { border-left-color: #e94560; }
+    .notif-item.tool\.call    { border-left-color: #f0a500; }
+    .notif-time { color: #555; font-size: 10px; }
+    .notif-msg  { color: #bbb; margin-top: 2px; }
+    .footer {
+      display: flex; justify-content: space-between;
+      padding: 10px 24px; background: #16213e;
+      border-top: 1px solid #0f3460; font-size: 12px; color: #666;
+    }
+    .token-screen {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; height: 100vh; gap: 16px;
+    }
+    .token-screen h2 { color: #e94560; font-size: 24px; }
+    .token-screen p  { color: #888; }
+    .token-screen input {
+      background: #16213e; border: 1px solid #0f3460; color: #e0e0e0;
+      padding: 10px 16px; border-radius: 8px; font-size: 14px; width: 300px;
+    }
+    .token-screen button {
+      background: #e94560; color: white; border: none;
+      padding: 10px 24px; border-radius: 8px; cursor: pointer; font-size: 14px;
+    }
+    .empty-state {
+      display: flex; align-items: center; justify-content: center;
+      color: #555; font-size: 14px; padding: 40px;
+    }
+    @keyframes pulse   { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    @keyframes shimmer { 0% { left: -100%; } 100% { left: 200%; } }
+  </style>
+</head>
+<body>
+
+  <div id="token-screen" class="token-screen" style="display:none">
+    <h2>GoClaw Agent Office</h2>
+    <p>Enter your gateway token to connect</p>
+    <input type="password" id="token-input" placeholder="Gateway token..." autofocus
+           onkeydown="if(event.key==='Enter') connectWithToken()">
+    <button onclick="connectWithToken()">Connect</button>
+  </div>
+
+  <div id="app" style="display:none; flex-direction:column; min-height:100vh;">
+    <div class="header">
+      <h1>GoClaw Agent Office</h1>
+      <div class="conn-status">
+        <div class="status-dot" id="conn-dot"></div>
+        <span id="conn-label">Connecting...</span>
+      </div>
+    </div>
+    <div class="main">
+      <div class="floor">
+        <div class="gateway-desk" id="gateway-desk"></div>
+        <div class="agent-grid" id="agent-grid"></div>
+      </div>
+      <div class="notifications">
+        <h3>Activity Log</h3>
+        <div class="notif-list" id="notif-list"></div>
+      </div>
+    </div>
+    <div class="footer">
+      <span id="footer-agents">0 agents</span>
+      <span id="footer-mode">--</span>
+      <span id="footer-uptime">--</span>
+    </div>
+  </div>
+
+  <script>
+    const SSE_BASE = 1000, SSE_MAX = 30000;
+    let token = '', state = null, es = null, reconnDelay = SSE_BASE, reconnTimer = null;
+
+    (function init() {
+      token = new URLSearchParams(window.location.search).get('token') || '';
+      if (token) { showApp(); connect(); }
+      else { document.getElementById('token-screen').style.display = 'flex'; }
+    })();
+
+    function connectWithToken() {
+      token = document.getElementById('token-input').value.trim();
+      if (!token) return;
+      const url = new URL(window.location);
+      url.searchParams.set('token', token);
+      window.history.replaceState({}, '', url);
+      showApp(); connect();
+    }
+
+    function showApp() {
+      document.getElementById('token-screen').style.display = 'none';
+      document.getElementById('app').style.display = 'flex';
+    }
+
+    function connect() {
+      setStatus('connecting');
+      if (es) { es.close(); }
+      es = new EventSource('/office/events?token=' + encodeURIComponent(token));
+      es.addEventListener('state', function(e) {
+        try {
+          state = JSON.parse(e.data);
+          render();
+          reconnDelay = SSE_BASE;
+          setStatus('connected');
+        } catch(err) { console.error('parse error', err); }
+      });
+      es.onerror = function() {
+        setStatus('disconnected');
+        es.close();
+        if (reconnTimer) clearTimeout(reconnTimer);
+        reconnTimer = setTimeout(function() {
+          reconnDelay = Math.min(reconnDelay * 2, SSE_MAX);
+          connect();
+        }, reconnDelay);
+      };
+      es.onopen = function() { setStatus('connected'); reconnDelay = SSE_BASE; };
+    }
+
+    function setStatus(s) {
+      document.getElementById('conn-dot').className = 'status-dot ' + s;
+      document.getElementById('conn-label').textContent =
+        { connected: 'Connected', disconnected: 'Disconnected', connecting: 'Connecting...' }[s] || s;
+    }
+
+    function render() {
+      if (!state) return;
+      renderGateway(); renderAgents(); renderNotifs(); renderFooter();
+    }
+
+    function renderGateway() {
+      var gw = state.gateway || {};
+      document.getElementById('gateway-desk').innerHTML =
+        '<div><div class="label">Version</div><div class="value">' + esc(gw.version || '--') + '</div></div>' +
+        '<div><div class="label">Mode</div><div class="value">' + esc(gw.mode || '--') + '</div></div>' +
+        '<div><div class="label">Uptime</div><div class="value">' + fmtUptime(gw.uptime) + '</div></div>' +
+        '<div><div class="label">Events</div><div class="value">' + ((gw.eventCount || 0).toLocaleString()) + '</div></div>' +
+        '<div><div class="label">Health</div><div class="value ' + (gw.healthy ? 'health-ok' : 'health-bad') + '">' + (gw.healthy ? 'OK' : 'DEGRADED') + '</div></div>';
+    }
+
+    function renderAgents() {
+      var grid = document.getElementById('agent-grid');
+      var agents = state.agents || {};
+      var ids = Object.keys(agents).sort();
+      if (!ids.length) {
+        grid.innerHTML = '<div class="empty-state">No agents registered</div>';
+        return;
+      }
+      grid.innerHTML = ids.map(function(id) {
+        var a = agents[id], st = a.state || 'idle';
+        var hasBubble = a.speechBubble && st !== 'idle';
+        var stats = a.stats || {};
+        return '<div class="agent-desk state-' + st + '">' +
+          '<div class="agent-header">' +
+            '<span class="agent-name">' + esc(a.name || a.id) + '</span>' +
+            '<span class="agent-model">' + esc(a.model || 'unknown') + '</span>' +
+          '</div>' +
+          '<div class="agent-state">' +
+            '<div class="state-dot ' + st + '"></div>' +
+            '<span>' + fmtState(st) + '</span>' +
+          '</div>' +
+          '<div class="speech-bubble' + (hasBubble ? ' active' : '') + '">' + (hasBubble ? esc(a.speechBubble) : '') + '</div>' +
+          '<div class="agent-stats">' +
+            '<span>msgs: ' + (stats.messagesToday || 0) + '</span>' +
+            '<span>avg: ' + (stats.avgResponseMs ? (stats.avgResponseMs / 1000).toFixed(1) + 's' : '--') + '</span>' +
+            '<span>errs: ' + (stats.errorCount || 0) + '</span>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+    }
+
+    function renderNotifs() {
+      var notifs = (state.notifications || []).slice().reverse();
+      document.getElementById('notif-list').innerHTML = notifs.map(function(n) {
+        return '<div class="notif-item ' + esc(n.type) + '">' +
+          '<div class="notif-time">' + fmtTime(n.timestamp) + '</div>' +
+          '<div class="notif-msg">' + esc(n.message) + '</div>' +
+        '</div>';
+      }).join('');
+    }
+
+    function renderFooter() {
+      var agents = state.agents || {}, count = Object.keys(agents).length;
+      document.getElementById('footer-agents').textContent = count + ' agent' + (count !== 1 ? 's' : '');
+      document.getElementById('footer-mode').textContent = (state.gateway || {}).mode || '--';
+      document.getElementById('footer-uptime').textContent = fmtUptime((state.gateway || {}).uptime || 0);
+    }
+
+    function esc(s) {
+      if (!s) return '';
+      var d = document.createElement('div');
+      d.textContent = String(s);
+      return d.innerHTML;
+    }
+
+    function fmtState(s) {
+      return { idle: 'Idle', receiving: 'Receiving', thinking: 'Thinking...', responding: 'Responding...', tool_calling: 'Using Tool...', error: 'Error' }[s] || s;
+    }
+
+    function fmtUptime(sec) {
+      if (!sec) return '--';
+      var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = Math.floor(sec % 60);
+      if (h > 0) return h + 'h ' + m + 'm';
+      if (m > 0) return m + 'm ' + s + 's';
+      return s + 's';
+    }
+
+    function fmtTime(ts) {
+      if (!ts) return '';
+      return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+  </script>
+</body>
+</html>
