@@ -24,7 +24,7 @@ func NewHandler(office *Office, token string) *Handler {
 	return &Handler{office: office, token: token}
 }
 
-// RegisterRoutes adds all three office routes to the given mux.
+// RegisterRoutes adds all office routes to the given mux.
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/office", h.ServeUI)
 	mux.HandleFunc("/office/state", h.ServeState)
