@@ -24,6 +24,7 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/config"
 	"github.com/nextlevelbuilder/goclaw/internal/cron"
 	"github.com/nextlevelbuilder/goclaw/internal/gateway"
+	"github.com/nextlevelbuilder/goclaw/internal/office"
 	"github.com/nextlevelbuilder/goclaw/internal/gateway/methods"
 	mcpbridge "github.com/nextlevelbuilder/goclaw/internal/mcp"
 	"github.com/nextlevelbuilder/goclaw/internal/pairing"
@@ -625,6 +626,77 @@ func runGateway() {
 	server.SetPolicyEngine(permPE)
 	server.SetPairingService(pairingStore)
 
+	// ── Agent Office ──────────────────────────────────────────────────────────────
+	officeMode := "standalone"
+	if cfg.Database.Mode == "managed" {
+		officeMode = "managed"
+	}
+	ofc := office.New(Version, officeMode)
+	officeBridge := office.NewBridge(ofc.State, ofc.Hub, msgBus)
+	officeBridge.Start()
+	defer officeBridge.Stop()
+
+	// Seed agents so they appear in the 3D scene on startup.
+	// Standalone: seed from agentRouter (pre-created above).
+	// Managed: seed from agent store (lazy resolver hasn't loaded any yet).
+	{
+		var seeds []office.AgentSeed
+		for _, info := range agentRouter.ListInfo() {
+			seeds = append(seeds, office.AgentSeed{
+				ID:          info.ID,
+				Name:        info.ID,
+				Model:       info.Model,
+				AgentType:   "predefined",
+				DisplayName: info.DisplayName,
+			})
+		}
+		if managedStores != nil && managedStores.Agents != nil {
+			if agents, err := managedStores.Agents.List(context.Background(), ""); err == nil {
+				for _, a := range agents {
+					seeds = append(seeds, office.AgentSeed{
+						ID:          a.AgentKey, // agent key — matches l.id used in bus events (resolver.go)
+						Name:        a.AgentKey,
+						Model:       a.Model,
+						AgentType:   a.AgentType,
+						DisplayName: a.DisplayName,
+					})
+				}
+			} else {
+				slog.Warn("office: failed to seed agents from DB", "error", err)
+			}
+		}
+		if len(seeds) > 0 {
+			ofc.SeedAgents(seeds)
+		}
+	}
+
+	// Seed teams so team platforms appear in the 3D scene on startup (managed mode only).
+	if managedStores != nil && managedStores.Teams != nil {
+		if teams, err := managedStores.Teams.ListTeams(context.Background()); err == nil {
+			var teamSeeds []office.TeamSeed
+			for _, t := range teams {
+				seed := office.TeamSeed{
+					ID:     t.ID.String(),
+					Name:   t.Name,
+					LeadID: t.LeadAgentID.String(),
+				}
+				if members, err := managedStores.Teams.ListMembers(context.Background(), t.ID); err == nil {
+					for _, m := range members {
+						if m.AgentKey != "" { seed.Members = append(seed.Members, m.AgentKey) }
+					}
+				}
+				teamSeeds = append(teamSeeds, seed)
+			}
+			if len(teamSeeds) > 0 {
+				ofc.SeedTeams(teamSeeds)
+			}
+		} else {
+			slog.Warn("office: failed to seed teams from DB", "error", err)
+		}
+	}
+
+	server.SetOfficeHandler(office.NewHandler(ofc, cfg.Gateway.Token))
+
 	// contextFileInterceptor is created inside wireManagedExtras (managed mode only).
 	// Declared here so it can be passed to registerAllMethods → AgentsMethods
 	// for immediate cache invalidation on agents.files.set.
@@ -853,6 +925,8 @@ func runGateway() {
 	// Setup graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	go ofc.Start(ctx)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)

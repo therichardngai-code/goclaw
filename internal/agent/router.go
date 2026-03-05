@@ -110,9 +110,11 @@ func (r *Router) List() []string {
 
 // AgentInfo is lightweight metadata about an agent.
 type AgentInfo struct {
-	ID        string `json:"id"`
-	Model     string `json:"model"`
-	IsRunning bool   `json:"isRunning"`
+	ID          string `json:"id"`
+	Model       string `json:"model"`
+	IsRunning   bool   `json:"isRunning"`
+	DisplayName string `json:"displayName"` // human-readable name; defaults to ID
+	AgentType   string `json:"agentType"`   // "predefined" for standalone agents
 }
 
 // ListInfo returns metadata for all agents.
@@ -121,10 +123,13 @@ func (r *Router) ListInfo() []AgentInfo {
 	defer r.mu.RUnlock()
 	infos := make([]AgentInfo, 0, len(r.agents))
 	for _, entry := range r.agents {
+		id := entry.agent.ID()
 		infos = append(infos, AgentInfo{
-			ID:        entry.agent.ID(),
-			Model:     entry.agent.Model(),
-			IsRunning: entry.agent.IsRunning(),
+			ID:          id,
+			Model:       entry.agent.Model(),
+			IsRunning:   entry.agent.IsRunning(),
+			DisplayName: id, // Agent interface has no DisplayName(); use ID as fallback
+			AgentType:   "predefined",
 		})
 	}
 	return infos

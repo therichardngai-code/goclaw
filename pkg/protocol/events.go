@@ -27,6 +27,7 @@ const (
 	EventHandoff = "handoff"
 
 	// Team activity events (real-time team workflow visibility).
+	EventTeamUpserted        = "team.upserted"       // team created or membership changed
 	EventTeamTaskCreated     = "team.task.created"
 	EventTeamTaskCompleted   = "team.task.completed"
 	EventTeamMessageSent     = "team.message.sent"

@@ -166,6 +166,10 @@ func (m *TeamsMethods) handleCreate(_ context.Context, client *gateway.Client, r
 		}
 	}
 
+	// Notify office bridge so the team platform appears in the 3D scene immediately.
+	allMembers, _ := m.teamStore.ListMembers(ctx, team.ID)
+	m.publishTeamState(ctx, team.ID, allMembers)
+
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]interface{}{
 		"team": team,
 	}))
@@ -453,20 +457,45 @@ func (m *TeamsMethods) handleRemoveMember(_ context.Context, client *gateway.Cli
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]interface{}{"ok": true}))
 }
 
-// invalidateTeamCaches invalidates agent caches for all members of a team
-// and emits a pub/sub event for TeamToolManager cache invalidation.
+// invalidateTeamCaches invalidates agent caches for all members of a team,
+// emits a pub/sub event for TeamToolManager cache invalidation,
+// and publishes a team.upserted event so the office 3D scene updates in real-time.
 func (m *TeamsMethods) invalidateTeamCaches(ctx context.Context, teamID uuid.UUID) {
+	members, _ := m.teamStore.ListMembers(ctx, teamID)
 	if m.agentRouter != nil {
-		members, err := m.teamStore.ListMembers(ctx, teamID)
-		if err == nil {
-			for _, member := range members {
-				if member.AgentKey != "" {
-					m.agentRouter.InvalidateAgent(member.AgentKey)
-				}
+		for _, member := range members {
+			if member.AgentKey != "" {
+				m.agentRouter.InvalidateAgent(member.AgentKey)
 			}
 		}
 	}
 	m.emitTeamCacheInvalidate()
+	m.publishTeamState(ctx, teamID, members)
+}
+
+// publishTeamState fires a team.upserted bus event so the office bridge
+// can call UpsertTeam() and create/update the team platform in real-time.
+func (m *TeamsMethods) publishTeamState(ctx context.Context, teamID uuid.UUID, members []store.TeamMemberData) {
+	if m.msgBus == nil {
+		return
+	}
+	team, err := m.teamStore.GetTeam(ctx, teamID)
+	if err != nil {
+		return
+	}
+	memberIDs := make([]string, 0, len(members))
+	for _, mem := range members {
+		if mem.AgentKey != "" { memberIDs = append(memberIDs, mem.AgentKey) }
+	}
+	m.msgBus.Broadcast(bus.Event{
+		Name: protocol.EventTeamUpserted,
+		Payload: map[string]interface{}{
+			"team_id": team.ID.String(),
+			"name":    team.Name,
+			"lead_id": team.LeadAgentID.String(),
+			"members": memberIDs,
+		},
+	})
 }
 
 // --- Update (settings) ---

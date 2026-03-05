@@ -43,6 +43,7 @@ type Server struct {
 	delegationsHandler      *httpapi.DelegationsHandler      // managed mode: delegation history API
 	builtinToolsHandler     *httpapi.BuiltinToolsHandler     // managed mode: builtin tool management API
 	agentStore         store.AgentStore             // managed mode: for context injection in tools_invoke
+	officeHandler      officeHandler                // Agent Office 3D UI + SSE
 
 	upgrader    websocket.Upgrader
 	rateLimiter *RateLimiter
@@ -190,6 +191,11 @@ func (s *Server) BuildMux() *http.ServeMux {
 		s.builtinToolsHandler.RegisterRoutes(mux)
 	}
 
+	// Agent Office 3D UI + SSE (standalone + managed)
+	if s.officeHandler != nil {
+		s.officeHandler.RegisterRoutes(mux)
+	}
+
 	s.mux = mux
 	return mux
 }
@@ -302,6 +308,14 @@ func (s *Server) SetBuiltinToolsHandler(h *httpapi.BuiltinToolsHandler) {
 
 // SetAgentStore sets the agent store for context injection in tools_invoke.
 func (s *Server) SetAgentStore(as store.AgentStore) { s.agentStore = as }
+
+// officeHandler is the interface for the Agent Office HTTP handler.
+type officeHandler interface {
+	RegisterRoutes(mux *http.ServeMux)
+}
+
+// SetOfficeHandler sets the Agent Office 3D UI handler.
+func (s *Server) SetOfficeHandler(h officeHandler) { s.officeHandler = h }
 
 // SetVersion sets the server version for health responses.
 func (s *Server) SetVersion(v string) { s.version = v }

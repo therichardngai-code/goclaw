@@ -1,0 +1,1357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Office — GoClaw</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #07071a;
+  color: #c0c0e0;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  overflow: hidden;
+  user-select: none;
+}
+/* token screen */
+#token-screen {
+  position: absolute; inset: 0; z-index: 100;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  background: radial-gradient(ellipse at center, #0a0a20 0%, #05050f 100%);
+}
+#token-screen h1 { font-size: 2.2rem; letter-spacing: .15em; color: #8888ff; text-shadow: 0 0 24px #4444ff66; }
+#token-screen p  { color: #6666aa; font-size: .88rem; }
+#token-input {
+  background: #0d0d20; border: 1px solid #3333aa; color: #c0c0ff;
+  padding: 10px 16px; border-radius: 6px; font-family: inherit; font-size: 1rem; width: 280px; outline: none;
+}
+#token-input:focus { border-color: #6666ff; }
+#connect-btn {
+  background: #2222aa; border: none; color: #c0c0ff;
+  padding: 10px 28px; border-radius: 6px; font-family: inherit; font-size: .93rem;
+  cursor: pointer; letter-spacing: .08em; transition: background .2s;
+}
+#connect-btn:hover { background: #3333cc; }
+#token-error { color: #ff4455; font-size: .8rem; min-height: 1em; }
+/* HUD */
+#hud {
+  position: absolute; top: 14px; left: 14px; z-index: 50;
+  display: none; flex-direction: column; gap: 6px; pointer-events: none;
+}
+.chip {
+  background: #08081aaa; border: 1px solid #3333aa44;
+  border-radius: 20px; padding: 4px 12px; font-size: .7rem; color: #6666aa; letter-spacing: .05em;
+}
+#conn-ok  { border-color: #44ff8855; color: #44ff88; }
+#conn-bad { border-color: #ff444455; color: #ff6666; display: none; }
+/* CSS2DRenderer overlay */
+#c2d { position: absolute; top: 0; left: 0; pointer-events: none; }
+/* 3D labels */
+.platform-label {
+  font-size: .72rem; font-weight: 600; letter-spacing: .08em;
+  padding: 3px 10px; background: #05050fcc; border-radius: 12px;
+  border: 1px solid currentColor; white-space: nowrap; text-shadow: 0 0 8px currentColor;
+}
+.agent-label {
+  display: flex; align-items: center; gap: 5px;
+  font-size: .8rem; font-weight: 700; color: #39ff14;
+  white-space: nowrap; letter-spacing: .04em;
+  text-shadow: 0 0 8px #39ff14, 0 0 2px #000;
+}
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  box-shadow: 0 0 6px currentColor;
+}
+.speech-bubble {
+  font-size: .62rem; color: #a0a8d0; white-space: nowrap;
+  letter-spacing: .05em; text-shadow: 0 0 6px rgba(120,120,255,0.5);
+}
+/* Camera controls */
+#cam-controls {
+  position: absolute; bottom: 20px; right: 20px; z-index: 50;
+  display: none; flex-direction: column; gap: 5px; pointer-events: auto;
+}
+.cam-row { display: flex; gap: 5px; }
+.cam-btn {
+  width: 36px; height: 36px; flex-shrink: 0;
+  background: #08081acc; border: 1px solid #3333aa66; border-radius: 8px;
+  color: #8888ff; font-size: 1rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s, color .15s, border-color .15s;
+  user-select: none;
+}
+.cam-btn:hover  { background: #1a1a44; color: #c0c0ff; border-color: #6666ff; }
+.cam-btn:active { background: #2a2a66; }
+.cam-btn.wide   { width: 77px; font-size: .72rem; letter-spacing: .05em; }
+</style>
+</head>
+<body>
+
+<div id="token-screen">
+  <h1>&#x1F916; AGENT OFFICE</h1>
+  <p>GoClaw &mdash; Real-time Agent Visualization</p>
+  <input id="token-input" type="password" placeholder="Enter access token..." autocomplete="off">
+  <button id="connect-btn" onclick="connectWithToken()">Connect</button>
+  <span id="token-error"></span>
+</div>
+
+<div id="cam-controls">
+  <div class="cam-row">
+    <button class="cam-btn" onclick="camRotLeft()"  title="Rotate left">&#x25C0;</button>
+    <button class="cam-btn" onclick="camRotRight()" title="Rotate right">&#x25B6;</button>
+  </div>
+  <div class="cam-row">
+    <button class="cam-btn" onclick="camZoomIn()"  title="Zoom in">+</button>
+    <button class="cam-btn" onclick="camZoomOut()" title="Zoom out">&minus;</button>
+  </div>
+  <button class="cam-btn wide" onclick="camCenter()" title="Fit all">&#x29BF; Center</button>
+</div>
+
+<div id="hud">
+  <div class="chip" id="conn-ok">&#x25CF; LIVE</div>
+  <div class="chip" id="conn-bad">&#x25CB; RECONNECTING&hellip;</div>
+  <div class="chip" id="hud-agents">0 agents</div>
+  <div class="chip" id="hud-ver"></div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader }                 from 'three/addons/loaders/GLTFLoader.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import * as SkeletonUtils             from 'three/addons/utils/SkeletonUtils.js';
+
+// ── constants ─────────────────────────────────────────────────────────────────
+
+const ASSET_BASE = '/office/assets';
+
+const CHAN_COLOR = {
+  telegram:0x2AABEE, discord:0x5865F2, whatsapp:0x25D366,
+  feishu:0x00B0F0,   zalo:0xFF3333,    zalo_personal:0xFF3333,
+  direct:0xFF6600,   system:0xFF6600,  team:0xFFD700, idle:0x334466,
+};
+const CHAN_ICON = {
+  telegram:'📱', discord:'💬', whatsapp:'🟢', feishu:'🐦',
+  zalo:'🔴', zalo_personal:'🔴', direct:'🔌', system:'🔌', team:'👥', idle:'🏠',
+};
+const CHAR_MODELS = [
+  'character-female-a','character-female-b','character-female-c',
+  'character-female-d','character-female-e','character-female-f',
+  'character-male-a', 'character-male-b', 'character-male-c',
+  'character-male-d', 'character-male-e', 'character-male-f',
+  'character-employee','character-gamer',
+];
+
+function charIdx(id) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) { h = ((h << 5) - h) + id.charCodeAt(i); h |= 0; }
+  return Math.abs(h) % CHAR_MODELS.length;
+}
+
+// Per-character animated GLB names (null = no anim available, fall back to static GLB).
+// Indices match CHAR_MODELS. States: idle, walking, talking.
+const ANIM_GLB = [
+  { idle:'anim-female-a-idle', walking:'anim-female-a-walking', talking:'anim-female-a-talking' }, // 0 female-a
+  { idle:'anim-female-a-idle', walking:'anim-female-a-walking', talking:'anim-female-a-talking' }, // 1 female-b (cross-anim female-a)
+  { idle:'anim-female-c-idle', walking:'anim-female-c-walking', talking:null },                     // 2 female-c
+  { idle:'anim-female-d-idle', walking:'anim-female-d-walking', talking:null },                     // 3 female-d
+  { idle:'anim-female-c-idle', walking:'anim-female-c-walking', talking:null },                     // 4 female-e (cross-anim female-c)
+  { idle:'anim-female-d-idle', walking:'anim-female-d-walking', talking:null },                     // 5 female-f (cross-anim female-d)
+  { idle:'anim-male-a-idle',   walking:'anim-male-a-walking',   talking:null },                     // 6 male-a
+  { idle:'anim-male-b-idle',   walking:'anim-male-b-walking',   talking:null },                     // 7 male-b
+  { idle:'anim-male-c-idle',   walking:'anim-male-c-walking',   talking:'anim-male-c-talking' },    // 8 male-c
+  { idle:'anim-male-d-idle',   walking:'anim-male-d-walking',   talking:null },                     // 9 male-d
+  { idle:'anim-male-e-idle',   walking:'anim-male-e-walking',   talking:null },                     // 10 male-e
+  { idle:'anim-male-f-idle',   walking:'anim-male-f-walking',   talking:null },                     // 11 male-f
+  { idle:'anim-employee-idle', walking:'anim-employee-walking', talking:null },                     // 12 employee
+  { idle:'anim-gamer-idle',    walking:'anim-gamer-walking',    talking:null },                     // 13 gamer
+];
+
+// Map agent state → animation category.
+// Characters always walk (patrol) — only switch to talking when actively responding.
+function toAnimState(agentState, hasSpeechBubble) {
+  if (hasSpeechBubble && agentState === 'responding') return 'talking';
+  return 'walking';
+}
+
+function stateHex(s) {
+  return ({idle:0x666688,thinking:0x4488FF,responding:0x44FF88,tool_calling:0xFFAA00,error:0xFF3333})[s] ?? 0x666688;
+}
+function hex6(n) { return '#' + n.toString(16).padStart(6,'0'); }
+function cap(s)  { return s ? s[0].toUpperCase() + s.slice(1) : s; }
+
+// Smallest signed angle between two angles (radians).
+function shortestAngle(from, to) {
+  let d = to - from;
+  while (d >  Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+// ── scene globals ─────────────────────────────────────────────────────────────
+
+let wgl, c2d, scene, camera, clock, loader;
+let platMgr, agentMgr, arcMgr;
+
+// Camera orbit state — updated by _fitCam, used by control buttons.
+const CAM_RADIUS = Math.sqrt(12 * 12 + 12 * 12); // ~16.97 (matches initial offset 12,12)
+const CAM_HEIGHT = 10;
+let camState = null; // initialised in initScene after THREE is available
+
+// ── scene init ────────────────────────────────────────────────────────────────
+
+function initScene() {
+  wgl = new THREE.WebGLRenderer({ antialias: true });
+  wgl.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  wgl.setSize(window.innerWidth, window.innerHeight);
+  wgl.setClearColor(0x06060f);
+  wgl.toneMapping = THREE.ACESFilmicToneMapping;
+  wgl.toneMappingExposure = 1.4;
+  wgl.shadowMap.enabled = true;
+  wgl.shadowMap.type = THREE.PCFSoftShadowMap;
+  document.body.appendChild(wgl.domElement);
+
+  c2d = new CSS2DRenderer();
+  c2d.setSize(window.innerWidth, window.innerHeight);
+  c2d.domElement.id = 'c2d';
+  document.body.appendChild(c2d.domElement);
+
+  scene  = new THREE.Scene();
+  scene.background = makeSpaceBackground();
+  clock  = new THREE.Clock();
+  loader = new GLTFLoader();
+
+  const asp = window.innerWidth / window.innerHeight, fs = 16;
+  camera = new THREE.OrthographicCamera(-fs*asp/2, fs*asp/2, fs/2, -fs/2, 0.1, 300);
+  camera.position.set(12, 10, 12);
+  camera.lookAt(0, 0, 0);
+
+  // Initialise orbit state so cam buttons can do relative adjustments.
+  camState = { target: new THREE.Vector3(0,0,0), angle: Math.PI/4, frustumHalf: fs };
+
+  // Ambient — warm fill so shadows aren't pitch black
+  scene.add(new THREE.AmbientLight(0xc8d0ff, 1.8));
+
+  // Key light — top-front-right (matches camera angle), cool-white, casts shadows
+  const key = new THREE.DirectionalLight(0xffffff, 3.0);
+  key.position.set(8, 14, 8);
+  key.castShadow = true;
+  key.shadow.mapSize.setScalar(1024);
+  key.shadow.camera.near = 1;
+  key.shadow.camera.far  = 80;
+  key.shadow.camera.left = key.shadow.camera.bottom = -22;
+  key.shadow.camera.right = key.shadow.camera.top   =  22;
+  key.shadow.bias = -0.002;
+  scene.add(key);
+
+  // Fill light — opposite side, softer, slightly warm to separate characters from bg
+  const fill = new THREE.DirectionalLight(0xffe8c0, 1.2);
+  fill.position.set(-6, 6, -4);
+  scene.add(fill);
+
+  // Rim light — from below-back to give neon edge pop to platforms
+  const rim = new THREE.DirectionalLight(0x6666ff, 0.8);
+  rim.position.set(0, -4, -8);
+  scene.add(rim);
+
+  platMgr  = new PlatformManager(scene, loader);
+  agentMgr = new AgentManager(scene, loader);
+  arcMgr   = new ArcManager(scene);
+
+  window.addEventListener('resize', onResize);
+  initMouseControls();
+  tick();
+}
+
+// ── Space background texture ──────────────────────────────────────────────────
+// Procedural canvas: dark nebula with teal centre-left glow, red-brown top-right
+// glow, and scattered stars — matches the reference office screenshot.
+function makeSpaceBackground() {
+  const W = 1024, H = 768;
+  const cv  = document.createElement('canvas');
+  cv.width  = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+
+  // Base — very dark navy
+  ctx.fillStyle = '#06060f';
+  ctx.fillRect(0, 0, W, H);
+
+  // Teal nebula glow — centre-left
+  const teal = ctx.createRadialGradient(W*0.38, H*0.58, 0, W*0.38, H*0.58, W*0.52);
+  teal.addColorStop(0,   'rgba(0,90,90,0.40)');
+  teal.addColorStop(0.6, 'rgba(0,40,60,0.18)');
+  teal.addColorStop(1,   'rgba(0,0,0,0)');
+  ctx.fillStyle = teal;
+  ctx.fillRect(0, 0, W, H);
+
+  // Red-brown glow — top-right
+  const red = ctx.createRadialGradient(W*0.82, H*0.18, 0, W*0.82, H*0.18, W*0.42);
+  red.addColorStop(0,   'rgba(90,22,10,0.45)');
+  red.addColorStop(0.5, 'rgba(50,10,5,0.20)');
+  red.addColorStop(1,   'rgba(0,0,0,0)');
+  ctx.fillStyle = red;
+  ctx.fillRect(0, 0, W, H);
+
+  // Scattered stars
+  for (let i = 0; i < 120; i++) {
+    const x = Math.random() * W, y = Math.random() * H;
+    const r = Math.random() * 1.4 + 0.3;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(200,215,255,${(Math.random() * 0.6 + 0.2).toFixed(2)})`;
+    ctx.fill();
+  }
+
+  return new THREE.CanvasTexture(cv);
+}
+
+// Machine decorations placed against the back and left walls of every platform.
+// colorTheme must match a key in _wallSets so we can reuse the loaded colormap.
+const MACHINE_DEFS = [
+  { file: 'vending-machine',   colorTheme: 'arcade' },
+  { file: 'arcade-machine',    colorTheme: 'arcade' },
+  { file: 'prizes',            colorTheme: 'arcade' },
+  { file: 'ticket-machine',    colorTheme: 'arcade' },
+  { file: 'freezers-standing', colorTheme: 'market' },
+];
+
+// Deterministically pick wall theme for a platform key.
+// Uses a simple hash so each platform gets a stable, alternating style.
+function wallTheme(key) {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (Math.imul(h, 31) + key.charCodeAt(i)) | 0;
+  return (Math.abs(h) % 2 === 0) ? 'arcade' : 'market';
+}
+
+// ── PlatformManager ───────────────────────────────────────────────────────────
+
+class PlatformManager {
+  constructor(s, l) {
+    this.scene = s; this.loader = l; this.map = new Map();
+
+    // ── Crate ────────────────────────────────────────────────────────────────
+    this._crateGLB     = null;
+    this._cratePending = [];
+    this._blasterColormap = new THREE.TextureLoader().load(`${ASSET_BASE}/platform/blaster-colormap.png`);
+    this._blasterColormap.flipY = false;
+    this._blasterColormap.colorSpace = THREE.SRGBColorSpace;
+    this._loadCrate();
+
+    // ── Machines ─────────────────────────────────────────────────────────────
+    this._machinesReady  = false;
+    this._machinePool    = {}; // file → { scene, colorTheme }
+    this._machinePending = [];
+    this._loadMachines();
+
+    // ── Walls — two themes: 'arcade' (kenney_mini-arcade) and 'market' (kenney_mini-market)
+    // Each theme has its own GLB set, colormap, and pending queue.
+    this._wallSets = {};
+    for (const theme of ['arcade', 'market']) {
+      const cm = new THREE.TextureLoader().load(`${ASSET_BASE}/platform/${theme}-colormap.png`);
+      cm.flipY = false; cm.colorSpace = THREE.SRGBColorSpace;
+      this._wallSets[theme] = {
+        glbs:    { wall: null, corner: null, door: null, column: null },
+        pending: [],
+        colormap: cm,
+      };
+      this._loadWallSet(theme);
+    }
+  }
+
+  // Load crate-medium.glb once; apply to any platforms that were created first.
+  _loadCrate() {
+    this.loader.load(
+      `${ASSET_BASE}/platform/crate-medium.glb`,
+      gltf => {
+        this._crateGLB = gltf.scene;
+        for (const { g, color, W, D } of this._cratePending) this._addCrates(g, color, W, D);
+        this._cratePending = [];
+      },
+      undefined,
+      err => console.warn('[office] crate GLB load failed:', err)
+    );
+  }
+
+  // Load all machine GLBs from the pool; flush pending platforms when done (success or fail).
+  _loadMachines() {
+    let remaining = MACHINE_DEFS.length;
+    const done = () => {
+      if (--remaining > 0) return;
+      this._machinesReady = true;
+      this._machinePending.forEach(args => this._addMachines(...args));
+      this._machinePending = [];
+    };
+    for (const def of MACHINE_DEFS) {
+      this.loader.load(
+        `${ASSET_BASE}/platform/machines/${def.file}.glb`,
+        gltf => { this._machinePool[def.file] = { scene: gltf.scene, colorTheme: def.colorTheme }; done(); },
+        undefined,
+        err  => { console.warn('[office] machine GLB failed:', def.file, err); done(); }
+      );
+    }
+  }
+
+  // Pick 2 distinct machine files for this platform key (deterministic by hash).
+  _pickMachines(key) {
+    const files = Object.keys(this._machinePool);
+    if (!files.length) return [];
+    let h = 0;
+    for (let i = 0; i < key.length; i++) h = (Math.imul(h, 31) + key.charCodeAt(i)) | 0;
+    const n = files.length;
+    const i0 = Math.abs(h) % n;
+    const i1 = (i0 + 1) % n;
+    return [files[i0], files[i1]];
+  }
+
+  // Place 2 machines per platform: one against the back wall (left of door),
+  // one against the left wall (mid-depth). Normalises height to TARGET_H.
+  _addMachines(g, color, W, D, key) {
+    const TARGET_H = 1.3;
+    const hw = W / 2, hd = D / 2;
+    // Slot 0: back wall, left of door, face into room (+Z).
+    // Slot 1: left wall, mid-depth, face into room (+X).
+    const slots = [
+      { x: -hw * 0.55, z: -hd + 0.5, ry: 0 },
+      { x: -hw + 0.5,  z: 0,          ry:  Math.PI / 2 },
+    ];
+    for (const [i, file] of this._pickMachines(key).entries()) {
+      const def = this._machinePool[file]; if (!def) continue;
+      const mesh = SkeletonUtils.clone(def.scene);
+      // Normalise height so machines look consistent regardless of GLB scale.
+      const box = new THREE.Box3().setFromObject(mesh);
+      const sz  = new THREE.Vector3(); box.getSize(sz);
+      if (sz.y > 0.01) {
+        const s = TARGET_H / sz.y;
+        mesh.scale.setScalar(s);
+        mesh.position.y = -box.min.y * s; // ground the base
+      }
+      // Apply pack colormap + platform emissive tint.
+      const colormap = this._wallSets[def.colorTheme]?.colormap;
+      mesh.traverse(child => {
+        if (!child.isMesh) return;
+        child.castShadow = true;
+        child.material = child.material.clone();
+        if (colormap) child.material.map = colormap; // always override — GLB may embed a stale relative texture URI
+        child.material.emissive          = new THREE.Color(color);
+        child.material.emissiveIntensity = 0.12;
+        child.material.needsUpdate       = true;
+      });
+      const { x, z, ry } = slots[i];
+      const grp = new THREE.Group();
+      grp.add(mesh);
+      grp.position.set(x, 0, z);
+      grp.rotation.y = ry;
+      g.add(grp);
+    }
+  }
+
+  // Load wall GLBs for a theme; apply to pending platforms when all 4 are ready.
+  // Arcade GLBs live in platform/, market GLBs in platform/market/.
+  _loadWallSet(theme) {
+    const set    = this._wallSets[theme];
+    const dir    = theme === 'arcade' ? `${ASSET_BASE}/platform/` : `${ASSET_BASE}/platform/market/`;
+    const assets = [['wall', 'wall'], ['wall-corner', 'corner'], ['wall-door-rotate', 'door'], ['column', 'column']];
+    let remaining = assets.length;
+    for (const [file, key] of assets) {
+      this.loader.load(
+        `${dir}${file}.glb`,
+        gltf => {
+          set.glbs[key] = gltf.scene;
+          if (--remaining === 0) {
+            set.pending.forEach(args => this._addWalls(...args));
+            set.pending = [];
+          }
+        },
+        undefined,
+        err => { console.warn('[office] wall GLB failed:', theme, file, err); remaining--; }
+      );
+    }
+  }
+
+  // Clone a wall GLB piece, apply theme colormap + platform emissive tint.
+  _prepWallMesh(src, color, colormap) {
+    const mesh = SkeletonUtils.clone(src);
+    mesh.traverse(child => {
+      if (!child.isMesh) return;
+      child.castShadow = true;
+      child.material = child.material.clone();
+      // Always override — GLB may embed a relative texture URI (Textures/colormap.png)
+      // that GLTFLoader tries to fetch and fails (404), leaving material.map set to a
+      // broken texture. Unconditional assignment ensures our correct colormap wins.
+      child.material.map = colormap;
+      child.material.emissive          = new THREE.Color(color);
+      child.material.emissiveIntensity = 0.15;
+      child.material.needsUpdate       = true;
+    });
+    return mesh;
+  }
+
+  // Build L-shaped half-walls along the back (-Z) and left (-X) edges.
+  // Back wall gets a door in the centre; corner piece closes the back-left joint.
+  // Camera sits at (+X +Z) so these two walls form the visible "room" backdrop.
+  // theme: 'arcade' | 'market' — selects which GLB set + colormap to use.
+  _addWalls(g, color, W, D, theme) {
+    const set = this._wallSets[theme];
+    const { wall, corner, door, column } = set.glbs;
+    const colormap = set.colormap;
+    if (!wall || !corner || !door) return;
+
+    const hw = W / 2, hd = D / 2;
+
+    // Measure tile footprint — use the LARGER horizontal dimension so we get
+    // the wall's length rather than its thin depth, regardless of GLB orientation.
+    const tmp  = SkeletonUtils.clone(wall);
+    const bbox = new THREE.Box3().setFromObject(tmp);
+    const sz   = new THREE.Vector3();
+    bbox.getSize(sz);
+    const tileW = Math.max(sz.x, sz.z) > 0.01 ? Math.max(sz.x, sz.z) : 1.0;
+
+    // ── Back wall  (z = -hd, tiles run along X, face inward toward +Z) ──────
+    // Centre the tile strip on the platform width so overhang is symmetric.
+    const nBack   = Math.ceil(W / tileW);
+    const doorIdx = Math.floor(nBack / 2); // centre tile = door
+    const startX  = -((nBack - 1) * tileW) / 2;
+    for (let i = 0; i < nBack; i++) {
+      const src  = i === doorIdx ? door : wall;
+      const tile = this._prepWallMesh(src, color, colormap);
+      tile.position.set(startX + i * tileW, 0, -hd);
+      tile.rotation.y = 0;
+      g.add(tile);
+    }
+
+    // ── Left wall  (x = -hw, tiles run along Z, face inward toward +X) ──────
+    // Centre the tile strip on the platform depth so overhang is symmetric.
+    const nLeft  = Math.ceil(D / tileW);
+    const startZ = -((nLeft - 1) * tileW) / 2;
+    for (let i = 0; i < nLeft; i++) {
+      const tile = this._prepWallMesh(wall, color, colormap);
+      tile.position.set(-hw, 0, startZ + i * tileW);
+      tile.rotation.y = Math.PI / 2;
+      g.add(tile);
+    }
+
+    // ── Back-left corner ─────────────────────────────────────────────────────
+    const c = this._prepWallMesh(corner, color, colormap);
+    c.position.set(-hw, 0, -hd);
+    c.rotation.y = Math.PI / 2;
+    g.add(c);
+
+    // ── Column at the back-left junction ─────────────────────────────────────
+    if (column) {
+      const col = this._prepWallMesh(column, color, colormap);
+      col.position.set(-hw, 0, -hd);
+      g.add(col);
+    }
+  }
+
+  // Place one crate at each corner of the platform group.
+  _addCrates(g, color, W, D) {
+    const hw = W / 2, hd = D / 2, inset = 0.42;
+    // Single crate in the near-right corner (visible from the isometric camera angle).
+    const corners = [
+      [ hw - inset, -hd + inset,  Math.PI / 2 ],
+    ];
+    for (const [cx, cz, ry] of corners) {
+      const crate = SkeletonUtils.clone(this._crateGLB);
+
+      crate.scale.setScalar(1);
+      crate.position.set(cx, 0, cz);
+      crate.rotation.y = ry;
+      crate.traverse(child => {
+        if (!child.isMesh) return;
+        child.castShadow = true;
+        child.receiveShadow = true;
+        // Clone material so tint is per-platform, not shared.
+        child.material = child.material.clone();
+        // Always apply colormap — guards against any embedded texture URI in the GLB.
+        child.material.map = this._blasterColormap;
+        child.material.needsUpdate = true;
+        child.material.emissive          = new THREE.Color(color);
+        child.material.emissiveIntensity = 0.18;
+      });
+      g.add(crate);
+    }
+  }
+
+  create(key, teams = {}) {
+    let color = CHAN_COLOR.idle, icon = '🏠', name = 'Home';
+    if (key.startsWith('team:')) {
+      const t = teams[key.slice(5)];
+      color = CHAN_COLOR.team; icon = '👥'; name = t?.name || 'Team';
+    } else if (key !== 'idle' && CHAN_COLOR[key]) {
+      color = CHAN_COLOR[key]; icon = CHAN_ICON[key] || '🔌'; name = cap(key);
+    }
+    const W = 5.5, D = 4.5, g = new THREE.Group();
+
+    // Flat dark semi-transparent ground fill — shadows land here
+    const fill = new THREE.Mesh(
+      new THREE.PlaneGeometry(W, D),
+      new THREE.MeshStandardMaterial({
+        color: 0x080818, transparent: true, opacity: 0.45,
+        roughness: 1, metalness: 0, depthWrite: false,
+      })
+    );
+    fill.rotation.x = -Math.PI / 2;
+    fill.receiveShadow = true;
+    g.add(fill);
+
+    // Colored border outline — single rectangle on the ground plane
+    const hw = W / 2, hd = D / 2, y = 0.01;
+    const pts = [
+      new THREE.Vector3(-hw, y, -hd), new THREE.Vector3( hw, y, -hd),
+      new THREE.Vector3( hw, y,  hd), new THREE.Vector3(-hw, y,  hd),
+      new THREE.Vector3(-hw, y, -hd),
+    ];
+    g.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color })
+    ));
+
+    // Zone label (CSS2D) — bottom-left corner, matching reference style
+    const div = document.createElement('div');
+    div.className = 'platform-label';
+    div.textContent = `${icon} ${name}`;
+    div.style.color = hex6(color);
+    const lbl = new CSS2DObject(div);
+    lbl.position.set(-hw + 0.3, 0, hd + 0.3);
+    g.add(lbl);
+
+    // Corner crate — add now if GLB loaded, otherwise queue.
+    if (this._crateGLB) {
+      this._addCrates(g, color, W, D);
+    } else {
+      this._cratePending.push({ g, color, W, D });
+    }
+
+    // L-shaped walls — pick theme for this platform, then add or queue.
+    const theme = wallTheme(key);
+    const wset  = this._wallSets[theme];
+    const wallsReady = wset.glbs.wall && wset.glbs.corner && wset.glbs.door;
+    if (wallsReady) {
+      this._addWalls(g, color, W, D, theme);
+    } else {
+      wset.pending.push([g, color, W, D, theme]);
+    }
+
+    // Machines — add now if all GLBs loaded, otherwise queue.
+    if (this._machinesReady) {
+      this._addMachines(g, color, W, D, key);
+    } else {
+      this._machinePending.push([g, color, W, D, key]);
+    }
+
+    this.scene.add(g);
+    this.map.set(key, { g, W, D, color });
+  }
+
+  remove(key) {
+    const p = this.map.get(key); if (!p) return;
+    this.scene.remove(p.g);
+    // THREE.js fires 'removed' on p.g but NOT on its children, so CSS2DObject
+    // elements inside the group are never cleaned up automatically.
+    // Manually replicate what CSS2DObject's own 'removed' handler would do.
+    p.g.traverse(o => {
+      if (o.isCSS2DObject && o.element?.parentNode) o.element.parentNode.removeChild(o.element);
+      o.geometry?.dispose();
+      o.material?.dispose();
+    });
+    this.map.delete(key);
+  }
+
+  layout() {
+    const list = [...this.map.values()]; if (!list.length) return;
+    const cols = Math.max(1, Math.ceil(Math.sqrt(list.length)));
+    const gX = 3.5, gZ = 3.5;
+    const stepX = list[0].W + gX, stepZ = list[0].D + gZ;
+    const offX = ((cols - 1) * stepX) / 2;
+    list.forEach((p, i) =>
+      p.g.position.set((i % cols) * stepX - offX, 0, Math.floor(i / cols) * stepZ));
+    this._fitCam(list);
+  }
+
+  _fitCam(list) {
+    let x0=Infinity, x1=-Infinity, z0=Infinity, z1=-Infinity;
+    list.forEach(p => {
+      const {x,z} = p.g.position;
+      x0=Math.min(x0,x-p.W/2); x1=Math.max(x1,x+p.W/2);
+      z0=Math.min(z0,z-p.D/2); z1=Math.max(z1,z+p.D/2);
+    });
+    const cx=(x0+x1)/2, cz=(z0+z1)/2;
+    const span = Math.max(x1-x0+8, z1-z0+8);
+    const asp  = window.innerWidth / window.innerHeight;
+    const fs   = Math.max(span/asp, span) * 0.65;
+    // Sync orbit state so cam buttons work relative to the new layout.
+    if (camState) { camState.target.set(cx,0,cz); camState.angle = Math.PI/4; camState.frustumHalf = fs; }
+    camera.left=-fs*asp/2; camera.right=fs*asp/2;
+    camera.top=fs/2; camera.bottom=-fs/2;
+    camera.position.set(cx+12, 10, cz+12);
+    camera.lookAt(cx, 0, cz);
+    camera.updateProjectionMatrix();
+  }
+
+  slotPos(key, slot, total) {
+    const p = this.map.get(key); if (!p) return new THREE.Vector3();
+    const perRow = Math.min(4, Math.max(1, total));
+    const col = slot % perRow, row = Math.floor(slot / perRow);
+    const rows = Math.ceil(total / perRow);
+    return p.g.position.clone().add(new THREE.Vector3(
+      (col - (perRow - 1) / 2) * 1.3,
+      0.15,
+      row * 1.3 - (rows - 1) * 0.65
+    ));
+  }
+
+  has(k)  { return this.map.has(k); }
+  keys()  { return this.map.keys(); }
+  get(k)  { return this.map.get(k); }
+}
+
+// ── AgentManager ──────────────────────────────────────────────────────────────
+
+const WALK_SPEED   = 0.35; // units/sec
+const WANDER_RANGE = 0.45; // max wander offset from slot centre
+const ARRIVE_DIST  = 0.08; // pick new wander target when this close
+
+class AgentManager {
+  constructor(s, l) {
+    this.scene = s; this.loader = l;
+    this.map       = new Map(); // id → agent obj
+    this.cache     = new Map(); // name → { scene, anims } (static) or { scene } (static glb)
+    this.animCache = new Map(); // animName → { scene, anims }
+
+    // Preload colormap texture — animated GLBs converted from FBX have no embedded texture.
+    // flipY=false: glTF UV space; SRGBColorSpace for correct colour reproduction.
+    this.colormap = new THREE.TextureLoader().load(`${ASSET_BASE}/characters/Textures/colormap.png`);
+    this.colormap.flipY = false;
+    this.colormap.colorSpace = THREE.SRGBColorSpace;
+  }
+
+  // Apply colormap to every mesh in an animated GLB (texture was lost during FBX→GLB conversion).
+  _applyColormap(mesh) {
+    mesh.traverse(child => {
+      if (!child.isMesh) return;
+      const mats = Array.isArray(child.material) ? child.material : [child.material];
+      mats.forEach(mat => {
+        if (mat && !mat.map) {        // only apply if no texture already embedded
+          mat.map = this.colormap;
+          mat.needsUpdate = true;
+        }
+      });
+    });
+  }
+
+  update(id, data) {
+    if (!this.map.has(id)) this._spawn(id, data);
+    const a = this.map.get(id);
+    a.data = data;
+
+    // Update name
+    const nameSpan = a.nameLbl.element.querySelector('span');
+    if (nameSpan) nameSpan.textContent = data.displayName || data.name || id;
+
+    // Update status dot color (background + glow)
+    const dotEl = a.nameLbl.element.querySelector('.status-dot');
+    if (dotEl) {
+      const col = hex6(stateHex(data.state));
+      dotEl.style.background = col;
+      dotEl.style.color      = col;
+    }
+
+    // Activity indicator — "••• toolname" for tool calls, brief text for others.
+    // Idle/error always clears the bubble even if Go state has a stale value.
+    if (data.state === 'idle' || data.state === 'error') {
+      a.bubble.element.textContent = '';
+      a.bubble.element.style.display = 'none';
+    } else if (data.speechBubble) {
+      const raw = data.speechBubble;
+      const text = raw.startsWith('Using: ') ? '••• ' + raw.slice(7) : raw;
+      a.bubble.element.textContent = text;
+      a.bubble.element.style.display = '';
+    } else {
+      a.bubble.element.style.display = 'none';
+    }
+
+    // Error tilt
+    a.group.rotation.z = data.state === 'error' ? 0.26 : 0;
+    // Trigger anim state update
+    const as = toAnimState(data.state, !!data.speechBubble);
+    if (as !== a.animState) this._applyAnim(id, as);
+  }
+
+  _spawn(id, data) {
+    const group = new THREE.Group();
+    group.userData = { baseY: 0.15, t0: Math.random() * Math.PI * 2 };
+
+    // Capsule placeholder while GLB loads
+    const ph = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.28, 0.7, 4, 8),
+      new THREE.MeshStandardMaterial({ color: 0x2a2a55 })
+    );
+    ph.position.y = 0.85;
+    group.add(ph);
+
+    // Name label with inline status dot — bold, no background box, matches reference
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'agent-label';
+    const dotSpan = document.createElement('div');
+    dotSpan.className = 'status-dot';
+    dotSpan.style.background = hex6(stateHex(data.state));
+    dotSpan.style.color = hex6(stateHex(data.state));
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = data.displayName || data.name || id;
+    nameDiv.appendChild(dotSpan);
+    nameDiv.appendChild(nameSpan);
+    const nameLbl = new CSS2DObject(nameDiv);
+    nameLbl.position.set(0, 2.2, 0);
+    group.add(nameLbl);
+
+    // Activity line — "••• tool_name" shown above the name when busy
+    const bubDiv = document.createElement('div');
+    bubDiv.className = 'speech-bubble';
+    bubDiv.style.display = 'none';
+    const bubble = new CSS2DObject(bubDiv);
+    bubble.position.set(0, 2.8, 0);
+    group.add(bubble);
+
+    this.scene.add(group);
+    // Wander state: character roams freely in 2D (X+Z) within its platform slot.
+    // Random start position and facing so multiple agents don't move in sync.
+    const startX = (Math.random() - 0.5) * 0.7;
+    const startZ = (Math.random() - 0.5) * 0.7;
+    const obj = { group, ph, nameLbl, bubble, data,
+                  staticMesh: null, animMesh: null, mixer: null,
+                  animState: null, animGLBName: null, animBaseY: 0,
+                  wanderX: startX, wanderZ: startZ,
+                  wanderTargetX: (Math.random() - 0.5) * 0.8,
+                  wanderTargetZ: (Math.random() - 0.5) * 0.8,
+                  wanderRotY: Math.random() * Math.PI * 2,
+                  talkingWith: null }; // id of agent being talked to during delegation handshake
+    this.map.set(id, obj);
+
+    // Kick off initial animated GLB load (idle state)
+    this._applyAnim(id, toAnimState(data.state, !!data.speechBubble));
+  }
+
+  // Load animated GLB (with AnimationClips); cache by name.
+  _loadAnim(name) {
+    if (this.animCache.has(name)) {
+      const { scene, anims } = this.animCache.get(name);
+      return Promise.resolve({ mesh: SkeletonUtils.clone(scene), anims });
+    }
+    return new Promise((res, rej) => {
+      this.loader.load(
+        `${ASSET_BASE}/characters/animated/${name}.glb`,
+        gltf => {
+          this.animCache.set(name, { scene: gltf.scene, anims: gltf.animations });
+          res({ mesh: SkeletonUtils.clone(gltf.scene), anims: gltf.animations });
+        },
+        undefined, rej
+      );
+    });
+  }
+
+  // Normalize mesh height to targetH world units, grounding the base at y=0.
+  // Uses SkeletonUtils.clone so SkinnedMesh skeletons stay properly bound.
+  _normalizeHeight(mesh, targetH = 1.4) {
+    const box = new THREE.Box3().setFromObject(mesh);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    if (size.y > 0) {
+      const s = targetH / size.y;
+      mesh.scale.setScalar(s);
+      // Ground: shift so bottom of mesh sits at y=0
+      mesh.position.y = -box.min.y * s;
+    } else {
+      // Empty bounds = SkinnedMesh skeleton not yet computed; apply known Kenney scale
+      console.warn('[office] empty bounds for mesh, applying fallback scale 100');
+      mesh.scale.setScalar(100);
+    }
+  }
+
+  // Load static GLB (no animations); cache by model name.
+  _loadStatic(modelName) {
+    if (this.cache.has(modelName)) return Promise.resolve(SkeletonUtils.clone(this.cache.get(modelName)));
+    return new Promise((res, rej) => {
+      this.loader.load(
+        `${ASSET_BASE}/characters/${modelName}.glb`,
+        gltf => { this.cache.set(modelName, gltf.scene); res(SkeletonUtils.clone(gltf.scene)); },
+        undefined,
+        err => { console.error('[office] static GLB load failed:', modelName, err); rej(err); }
+      );
+    });
+  }
+
+  // Apply the right animated GLB for the given anim state.
+  // Falls back to static GLB for characters without animations.
+  async _applyAnim(id, animState) {
+    const a = this.map.get(id); if (!a) return;
+    a.animState = animState;
+
+    const ci   = a.data.characterIndex ?? charIdx(id);
+    const entry = ANIM_GLB[ci] ?? {};
+    // Resolve GLB name: try requested state, fall back to idle, fall back to null (static)
+    const animName = entry[animState] ?? entry.idle ?? null;
+
+    // Early-return only for animated GLBs (null means static fallback — must not skip).
+    if (animName !== null && animName === a.animGLBName) return; // already loaded
+    a.animGLBName = animName;
+
+    if (!animName) {
+      // No animated GLB — load static GLB if not already loaded
+      if (!a.staticMesh) {
+        const mdl = CHAR_MODELS[ci];
+        this._loadStatic(mdl).then(mesh => {
+          if (!this.map.has(id)) return;
+          this._normalizeHeight(mesh);
+          mesh.traverse(child => { if (child.isMesh) child.castShadow = true; });
+          if (a.ph) { a.group.remove(a.ph); a.ph.geometry.dispose(); a.ph.material.dispose(); a.ph = null; }
+          a.group.add(mesh);
+          a.staticMesh = mesh;
+        }).catch(err => console.error('[office] static mesh error:', id, err));
+      }
+      // Stop any existing mixer
+      if (a.mixer) { a.mixer.stopAllAction(); a.mixer = null; }
+      if (a.animMesh) { a.group.remove(a.animMesh); a.animMesh = null; }
+      return;
+    }
+
+    try {
+      const { mesh, anims } = await this._loadAnim(animName);
+      if (!this.map.has(id) || a.animGLBName !== animName) return; // stale
+
+      // Use proven scale from note.html: Kenney armature is 0.01 internally → scale 100.
+      // position.set(0,0,0) so feet are at y=0 in group space (group sits on platform at y=0.15).
+      // Do NOT use _normalizeHeight here — bounding box on SkinnedMesh clone is unreliable.
+      mesh.scale.set(100, 100, 100);
+      mesh.position.set(0, 0, 0);
+      mesh.traverse(child => { if (child.isMesh) child.castShadow = true; });
+      // Remove placeholder
+      if (a.ph) { a.group.remove(a.ph); a.ph.geometry.dispose(); a.ph.material.dispose(); a.ph = null; }
+      // Remove old animated mesh + mixer
+      if (a.mixer)    { a.mixer.stopAllAction(); a.mixer = null; }
+      if (a.animMesh) { a.group.remove(a.animMesh); a.animMesh = null; }
+      // Hide static mesh while animated GLB is active
+      if (a.staticMesh) a.staticMesh.visible = false;
+
+      this._applyColormap(mesh); // animated GLBs have no embedded texture — apply colormap
+      a.group.add(mesh);
+      a.animMesh = mesh;
+
+      // Set up AnimationMixer — filter Hips position tracks first (causes jumping).
+      // Exact pattern from note.html: remove t.name includes 'Hips' + '.position'.
+      if (anims.length > 0) {
+        a.mixer = new THREE.AnimationMixer(mesh);
+        const clip = anims[0];
+        const cleanTracks = clip.tracks.filter(t =>
+          !(t.name.includes('Hips') && t.name.includes('.position'))
+        );
+        const cleanClip = new THREE.AnimationClip(clip.name, clip.duration, cleanTracks);
+        const action = a.mixer.clipAction(cleanClip);
+        action.setLoop(THREE.LoopRepeat, Infinity);
+        action.play();
+      }
+    } catch (err) { console.error('[office] anim GLB error:', id, animName, err); }
+  }
+
+  reposition(globalState, pm) {
+    const byPlat = new Map();
+    for (const [id, a] of this.map) {
+      const k = resolvePlatform(a.data, globalState.teams || {});
+      if (!byPlat.has(k)) byPlat.set(k, []);
+      byPlat.get(k).push(id);
+    }
+    for (const [k, ids] of byPlat) {
+      ids.forEach((id, i) => {
+        const a = this.map.get(id); if (!a) return;
+        const pos = pm.slotPos(k, i, ids.length);
+        a.group.position.copy(pos);
+        a.group.userData.baseY = pos.y;
+      });
+    }
+  }
+
+  // Called every frame with delta (seconds since last frame) and elapsed (total seconds).
+  tick(delta, elapsed) {
+    for (const a of this.map.values()) {
+      if (a.mixer) {
+        a.mixer.update(delta); // update bones first
+
+        if (a.animMesh) {
+          if (a.talkingWith) {
+            // ── Talking mode: walk toward the other agent and face them ──────
+            const other = this.map.get(a.talkingWith);
+            if (other) {
+              // Compute world-space direction from this agent to the other.
+              const toX = (other.group.position.x + other.wanderX) - (a.group.position.x + a.wanderX);
+              const toZ = (other.group.position.z + other.wanderZ) - (a.group.position.z + a.wanderZ);
+              const toLen = Math.sqrt(toX * toX + toZ * toZ);
+              if (toLen > 0.01) {
+                // Each frame: push wander target to the edge of the platform toward the other agent.
+                a.wanderTargetX = (toX / toLen) * WANDER_RANGE;
+                a.wanderTargetZ = (toZ / toLen) * WANDER_RANGE;
+                // Face the other agent (smooth turn).
+                const faceRot = Math.atan2(toX, toZ);
+                a.wanderRotY += shortestAngle(a.wanderRotY, faceRot) * 0.15;
+              }
+            }
+          }
+
+          // ── Movement: walk toward wanderTarget ───────────────────────────
+          const dx = a.wanderTargetX - a.wanderX;
+          const dz = a.wanderTargetZ - a.wanderZ;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+
+          if (!a.talkingWith && dist < ARRIVE_DIST) {
+            // Normal wander: pick a new random target on arrival.
+            a.wanderTargetX = (Math.random() - 0.5) * WANDER_RANGE * 2;
+            a.wanderTargetZ = (Math.random() - 0.5) * WANDER_RANGE * 2;
+          } else if (dist >= ARRIVE_DIST) {
+            const step = Math.min(WALK_SPEED * delta, dist);
+            a.wanderX += (dx / dist) * step;
+            a.wanderZ += (dz / dist) * step;
+            // Rotate to face travel direction only when wandering (not talking).
+            if (!a.talkingWith) {
+              const targetRotY = Math.atan2(dx, dz);
+              a.wanderRotY += shortestAngle(a.wanderRotY, targetRotY) * 0.12;
+            }
+          }
+
+          // Overwrite root motion with wander position (note.html pattern).
+          a.animMesh.position.set(a.wanderX, 0, a.wanderZ);
+          a.animMesh.rotation.set(0, a.wanderRotY, 0);
+        }
+      }
+      // Subtle Y-float hover on the group.
+      const g = a.group, ud = g.userData;
+      g.position.y = ud.baseY + Math.sin(elapsed * 1.4 + ud.t0) * 0.03;
+    }
+  }
+
+  // Called by ArcManager when a delegation handshake begins.
+  // Both agents walk toward each other and face each other.
+  setTalking(idA, idB) {
+    const a = this.map.get(idA), b = this.map.get(idB);
+    if (a) a.talkingWith = idB;
+    if (b) b.talkingWith = idA;
+  }
+
+  // Called by ArcManager when the handshake ends (3s elapsed or arc removed).
+  // Both agents resume normal random wandering.
+  clearTalking(idA, idB) {
+    const a = this.map.get(idA), b = this.map.get(idB);
+    if (a) { a.talkingWith = null; a.wanderTargetX = (Math.random()-0.5)*WANDER_RANGE*2; a.wanderTargetZ = (Math.random()-0.5)*WANDER_RANGE*2; }
+    if (b) { b.talkingWith = null; b.wanderTargetX = (Math.random()-0.5)*WANDER_RANGE*2; b.wanderTargetZ = (Math.random()-0.5)*WANDER_RANGE*2; }
+  }
+
+  remove(id) {
+    const a = this.map.get(id); if (!a) return;
+    if (a.mixer) a.mixer.stopAllAction();
+    this.scene.remove(a.group);
+    this.map.delete(id);
+  }
+
+  pos(id)  { return this.map.get(id)?.group.position.clone() ?? null; }
+  has(id)  { return this.map.has(id); }
+  keys()   { return this.map.keys(); }
+}
+
+// ── ArcManager (delegation arcs) ─────────────────────────────────────────────
+// Arcs animate as "marching ants" (dashed, flowing) for the first HANDSHAKE_MS ms
+// while the two agents are "talking" — then switch to a solid running arc.
+
+const HANDSHAKE_MS = 3000; // ms of animated handshake before arc goes solid
+
+class ArcManager {
+  constructor(s) { this.scene = s; this.map = new Map(); }
+
+  update(delegations, agentMgr) {
+    const live = new Set();
+    for (const d of delegations) {
+      if (d.status !== 'running') { this._rm(d.id, agentMgr); continue; }
+      live.add(d.id);
+      const from = agentMgr.pos(d.sourceId), to = agentMgr.pos(d.targetId);
+      if (!from || !to) continue;
+      if (this.map.has(d.id)) {
+        this._upd(d.id, from, to);
+      } else {
+        const startedMs = d.startedAt ? Date.parse(d.startedAt) : Date.now();
+        this._add(d.id, from, to, d.mode, startedMs, d.sourceId, d.targetId, agentMgr);
+      }
+    }
+    for (const id of [...this.map.keys()]) { if (!live.has(id)) this._rm(id, agentMgr); }
+  }
+
+  // Animate dashOffset on handshaking arcs; promote to solid when handshake ends.
+  tick(delta, agentMgr) {
+    const now = Date.now();
+    for (const [, a] of this.map) {
+      if (!a.handshaking) continue;
+      if (now - a.startedMs >= HANDSHAKE_MS) {
+        // Handshake over — swap dashed material for solid, agents resume wandering.
+        a.line.material.dispose();
+        a.line.material = new THREE.LineBasicMaterial({ color: a.color });
+        a.handshaking = false;
+        agentMgr.clearTalking(a.sourceId, a.targetId);
+      } else {
+        // March the dashes forward along the curve.
+        a.line.material.dashOffset -= delta * 3;
+      }
+    }
+  }
+
+  _curve(from, to) {
+    const mid = from.clone().add(to).multiplyScalar(0.5); mid.y += 3.5;
+    return new THREE.QuadraticBezierCurve3(from, mid, to).getPoints(32);
+  }
+
+  _add(id, from, to, mode, startedMs, sourceId, targetId, agentMgr) {
+    const color  = mode === 'async' ? 0xFFD700 : 0x00DDFF;
+    const age    = Date.now() - startedMs;
+    const handshaking = age < HANDSHAKE_MS;
+
+    let mat;
+    if (handshaking) {
+      mat = new THREE.LineDashedMaterial({ color, dashSize: 0.4, gapSize: 0.2 });
+      // Trigger agents to walk toward each other and face each other.
+      agentMgr.setTalking(sourceId, targetId);
+    } else {
+      mat = new THREE.LineBasicMaterial({ color });
+    }
+
+    const geo  = new THREE.BufferGeometry().setFromPoints(this._curve(from, to));
+    const line = new THREE.Line(geo, mat);
+    if (handshaking) line.computeLineDistances(); // required for LineDashedMaterial
+    this.scene.add(line);
+    this.map.set(id, { line, color, handshaking, startedMs, sourceId, targetId });
+  }
+
+  _upd(id, from, to) {
+    const a = this.map.get(id); if (!a) return;
+    a.line.geometry.setFromPoints(this._curve(from, to));
+    if (a.handshaking) a.line.computeLineDistances();
+  }
+
+  _rm(id, agentMgr) {
+    const a = this.map.get(id); if (!a) return;
+    // If arc is removed mid-handshake, clear the talking state.
+    if (a.handshaking && agentMgr) agentMgr.clearTalking(a.sourceId, a.targetId);
+    this.scene.remove(a.line);
+    a.line.geometry.dispose(); a.line.material.dispose();
+    this.map.delete(id);
+  }
+}
+
+// ── platform resolution ───────────────────────────────────────────────────────
+
+function resolvePlatform(agent, teams) {
+  if (!agent) return 'idle';
+  // Team members always belong to their team zone regardless of current state.
+  for (const [tid, team] of Object.entries(teams)) {
+    if (team.members?.includes(agent.id)) return `team:${tid}`;
+  }
+  // Only show channel platform while agent is actively processing.
+  // Mirrors the bubble-clearing logic: state is authoritative for terminal cases.
+  // This prevents ghost channel platforms when currentChannel is stale on the server.
+  if (agent.state !== 'idle' && agent.state !== 'error') {
+    const ch = agent.currentChannel;
+    if (ch && CHAN_COLOR[ch] !== undefined) return ch;
+  }
+  return 'idle';
+}
+
+// ── state reconciliation ──────────────────────────────────────────────────────
+
+let lastState = null, layoutDirty = false;
+
+function updateScene(state) {
+  const agentMap    = state.agents            || {};
+  const teams       = state.teams             || {};
+  const delegations = state.activeDelegations || [];
+
+  // Which platforms are needed
+  const needed = new Set(['idle']);
+  for (const a of Object.values(agentMap)) needed.add(resolvePlatform(a, teams));
+  for (const tid of Object.keys(teams))    needed.add(`team:${tid}`);
+
+  // Reconcile platforms
+  for (const k of [...platMgr.keys()]) { if (!needed.has(k)) { platMgr.remove(k); layoutDirty=true; } }
+  for (const k of needed)              { if (!platMgr.has(k)) { platMgr.create(k, teams); layoutDirty=true; } }
+
+  // Reconcile agents
+  const agentIds = new Set(Object.keys(agentMap));
+  for (const id of [...agentMgr.keys()]) { if (!agentIds.has(id)) { agentMgr.remove(id); layoutDirty=true; } }
+  for (const [id, a] of Object.entries(agentMap)) {
+    if (!agentMgr.has(id)) layoutDirty = true;
+    agentMgr.update(id, a);
+  }
+
+  if (layoutDirty) { platMgr.layout(); layoutDirty = false; }
+  agentMgr.reposition(state, platMgr);
+  arcMgr.update(delegations, agentMgr);
+  updateHUD(state);
+  lastState = state;
+}
+
+// ── HUD ───────────────────────────────────────────────────────────────────────
+
+function updateHUD(state) {
+  document.getElementById('hud-agents').textContent =
+    `${Object.keys(state.agents || {}).length} agent(s)`;
+  const v = state.gateway?.version;
+  if (v) document.getElementById('hud-ver').textContent = `v${v}`;
+}
+
+function setConnected(ok) {
+  document.getElementById('conn-ok').style.display  = ok ? '' : 'none';
+  document.getElementById('conn-bad').style.display = ok ? 'none' : '';
+}
+
+// ── camera controls ───────────────────────────────────────────────────────────
+
+function applyCam() {
+  if (!camera || !camState) return;
+  const asp = window.innerWidth / window.innerHeight;
+  const { target, angle, frustumHalf } = camState;
+  camera.position.set(
+    target.x + Math.cos(angle) * CAM_RADIUS,
+    CAM_HEIGHT,
+    target.z + Math.sin(angle) * CAM_RADIUS
+  );
+  camera.lookAt(target);
+  camera.left   = -frustumHalf * asp / 2;
+  camera.right  =  frustumHalf * asp / 2;
+  camera.top    =  frustumHalf / 2;
+  camera.bottom = -frustumHalf / 2;
+  camera.updateProjectionMatrix();
+}
+
+window.camZoomIn  = () => { camState.frustumHalf = Math.max(4,  camState.frustumHalf * 0.8);   applyCam(); };
+window.camZoomOut = () => { camState.frustumHalf = Math.min(120, camState.frustumHalf * 1.25); applyCam(); };
+window.camRotLeft  = () => { camState.angle -= Math.PI / 8; applyCam(); };
+window.camRotRight = () => { camState.angle += Math.PI / 8; applyCam(); };
+window.camCenter   = () => { if (platMgr) platMgr.layout(); }; // re-fits + resets angle
+
+// ── mouse controls (pan + wheel zoom) ────────────────────────────────────────
+
+function initMouseControls() {
+  let dragging = false, lx = 0, ly = 0;
+
+  // Left-button drag → pan camera target in XZ plane.
+  // Camera right vector in world: (-sin(a), 0, cos(a))
+  // Screen-down direction in world: (cos(a), 0, sin(a)) (toward camera)
+  wgl.domElement.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    dragging = true; lx = e.clientX; ly = e.clientY;
+    wgl.domElement.style.cursor = 'grabbing';
+  });
+
+  window.addEventListener('mousemove', e => {
+    if (!dragging || !camState) return;
+    const dx = e.clientX - lx, dy = e.clientY - ly;
+    lx = e.clientX; ly = e.clientY;
+    const scale = (camState.frustumHalf * 2) / window.innerHeight;
+    const a = camState.angle;
+    camState.target.x += (-dx * Math.sin(a) + dy * Math.cos(a)) * scale;
+    camState.target.z += ( dx * Math.cos(a) + dy * Math.sin(a)) * scale;
+    applyCam();
+  });
+
+  window.addEventListener('mouseup', () => {
+    dragging = false;
+    wgl.domElement.style.cursor = 'grab';
+  });
+
+  // Wheel → zoom (same clamp as +/− buttons)
+  wgl.domElement.addEventListener('wheel', e => {
+    if (!camState) return;
+    e.preventDefault();
+    const factor = e.deltaY > 0 ? 1.1 : 0.9; // scroll down = zoom out
+    camState.frustumHalf = Math.max(4, Math.min(120, camState.frustumHalf * factor));
+    applyCam();
+  }, { passive: false });
+
+  // Default cursor
+  wgl.domElement.style.cursor = 'grab';
+}
+
+// ── animation loop ────────────────────────────────────────────────────────────
+
+function tick() {
+  requestAnimationFrame(tick);
+  const delta = clock.getDelta(); // seconds since last frame (resets internal counter)
+  if (agentMgr) agentMgr.tick(delta, clock.elapsedTime);
+  if (arcMgr)   arcMgr.tick(delta, agentMgr);
+  wgl.render(scene, camera);
+  c2d.render(scene, camera);
+}
+
+// ── resize ────────────────────────────────────────────────────────────────────
+
+function onResize() {
+  const W = window.innerWidth, H = window.innerHeight, asp = W / H;
+  wgl.setSize(W, H); c2d.setSize(W, H);
+  const half = (camera.top - camera.bottom) / 2;
+  camera.left = -half * asp; camera.right = half * asp;
+  camera.updateProjectionMatrix();
+}
+
+// ── SSE connection ────────────────────────────────────────────────────────────
+
+let es = null, retryTimer = null, retryDelay = 1000, currentToken = '';
+
+function connect(token) {
+  currentToken = token;
+  if (es) { es.close(); es = null; }
+  clearTimeout(retryTimer);
+
+  es = new EventSource(`/office/events?token=${encodeURIComponent(token)}`);
+
+  es.addEventListener('state', e => {
+    retryDelay = 1000;
+    setConnected(true);
+    try { updateScene(JSON.parse(e.data)); } catch (err) { console.warn('state parse error', err); }
+  });
+
+  es.onerror = () => {
+    setConnected(false);
+    es.close(); es = null;
+    retryTimer = setTimeout(() => {
+      retryDelay = Math.min(retryDelay * 2, 30000);
+      connect(currentToken);
+    }, retryDelay);
+  };
+}
+
+// ── token screen ──────────────────────────────────────────────────────────────
+
+window.connectWithToken = function () {
+  const token = document.getElementById('token-input').value.trim();
+  document.getElementById('token-error').textContent = '';
+  document.getElementById('token-screen').style.display = 'none';
+  document.getElementById('hud').style.display = 'flex';
+  document.getElementById('cam-controls').style.display = 'flex';
+  initScene();
+  connect(token);
+};
+
+document.getElementById('token-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') window.connectWithToken();
+});
+
+// Auto-connect when ?token= is present in the URL
+const urlToken = new URLSearchParams(location.search).get('token');
+if (urlToken) {
+  document.getElementById('token-input').value = urlToken;
+  window.connectWithToken();
+}
+</script>
+</body>
+</html>
