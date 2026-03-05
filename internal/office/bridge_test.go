@@ -361,10 +361,19 @@ func TestBridge_HandoffEvent_AddsNotification(t *testing.T) {
 func TestBridge_TeamEvents_AddNotifications(t *testing.T) {
 	_, state, mb, _ := newBridgeFixture()
 
-	mb.Broadcast(bus.Event{Name: protocol.EventTeamTaskCreated})
-	mb.Broadcast(bus.Event{Name: protocol.EventTeamTaskCompleted})
-	mb.Broadcast(bus.Event{Name: protocol.EventDelegationStarted})
-	mb.Broadcast(bus.Event{Name: protocol.EventDelegationCompleted})
+	// New handlers require typed payloads
+	mb.Broadcast(bus.Event{Name: protocol.EventTeamTaskCreated, Payload: protocol.TeamTaskEventPayload{
+		TaskID: "task-1", Subject: "Test task",
+	}})
+	mb.Broadcast(bus.Event{Name: protocol.EventTeamTaskCompleted, Payload: protocol.TeamTaskEventPayload{
+		TaskID: "task-1", Subject: "Test task",
+	}})
+	mb.Broadcast(bus.Event{Name: protocol.EventDelegationStarted, Payload: protocol.DelegationEventPayload{
+		DelegationID: "del-1", SourceAgentKey: "agent-a", TargetAgentKey: "agent-b", Mode: "sync",
+	}})
+	mb.Broadcast(bus.Event{Name: protocol.EventDelegationCompleted, Payload: protocol.DelegationEventPayload{
+		DelegationID: "del-1", TargetAgentKey: "agent-b",
+	}})
 
 	snap := state.Snapshot()
 	if len(snap.Notifications) != 4 {
@@ -532,11 +541,11 @@ func TestBridge_DelegationArc_AddedOnStarted(t *testing.T) {
 
 	mb.Broadcast(bus.Event{
 		Name: protocol.EventDelegationStarted,
-		Payload: map[string]string{
-			"delegation_id": "d-001",
-			"source_agent":  "agent-a",
-			"target_agent":  "agent-b",
-			"mode":          "async",
+		Payload: protocol.DelegationEventPayload{
+			DelegationID:   "d-001",
+			SourceAgentKey: "agent-a",
+			TargetAgentKey: "agent-b",
+			Mode:           "async",
 		},
 	})
 
@@ -561,11 +570,15 @@ func TestBridge_DelegationArc_CompletedOnEvent(t *testing.T) {
 
 	mb.Broadcast(bus.Event{
 		Name: protocol.EventDelegationStarted,
-		Payload: map[string]string{"delegation_id": "d-001", "source_agent": "a", "target_agent": "b", "mode": "sync"},
+		Payload: protocol.DelegationEventPayload{
+			DelegationID: "d-001", SourceAgentKey: "a", TargetAgentKey: "b", Mode: "sync",
+		},
 	})
 	mb.Broadcast(bus.Event{
 		Name: protocol.EventDelegationCompleted,
-		Payload: map[string]string{"delegation_id": "d-001", "target_agent": "b"},
+		Payload: protocol.DelegationEventPayload{
+			DelegationID: "d-001", TargetAgentKey: "b",
+		},
 	})
 
 	snap := state.Snapshot()
@@ -582,11 +595,15 @@ func TestBridge_DelegationArc_CancelledOnEvent(t *testing.T) {
 
 	mb.Broadcast(bus.Event{
 		Name: protocol.EventDelegationStarted,
-		Payload: map[string]string{"delegation_id": "d-002", "source_agent": "a", "target_agent": "b", "mode": "async"},
+		Payload: protocol.DelegationEventPayload{
+			DelegationID: "d-002", SourceAgentKey: "a", TargetAgentKey: "b", Mode: "async",
+		},
 	})
 	mb.Broadcast(bus.Event{
-		Name:    "delegation.cancelled",
-		Payload: map[string]string{"delegation_id": "d-002"},
+		Name: protocol.EventDelegationCancelled,
+		Payload: protocol.DelegationEventPayload{
+			DelegationID: "d-002",
+		},
 	})
 
 	snap := state.Snapshot()

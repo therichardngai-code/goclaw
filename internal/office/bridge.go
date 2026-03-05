@@ -30,6 +30,15 @@ type agentEvent struct {
 	AgentID string      `json:"agentId"`
 	RunID   string      `json:"runId"`
 	Payload interface{} `json:"payload,omitempty"`
+	// Delegation context — present when running inside a delegation
+	DelegationID  string `json:"delegationId,omitempty"`
+	TeamID        string `json:"teamId,omitempty"`
+	TeamTaskID    string `json:"teamTaskId,omitempty"`
+	ParentAgentID string `json:"parentAgentId,omitempty"`
+	// Routing context
+	UserID  string `json:"userId,omitempty"`
+	Channel string `json:"channel,omitempty"`
+	ChatID  string `json:"chatId,omitempty"`
 }
 
 // Bridge subscribes to the event bus and drives OfficeState transitions.
@@ -66,29 +75,70 @@ func (b *Bridge) handleEvent(event bus.Event) {
 	b.state.IncrementEventCount()
 
 	switch event.Name {
+
+	// ── Agent events (all subtypes routed via handleAgentEvent) ──────────────
 	case protocol.EventAgent:
-		// All agent events — including chat chunks — are broadcast with Name=EventAgent
-		// by the gateway's OnEvent wiring. Chat subtypes (chunk, thinking) are handled
-		// inside handleAgentEvent by their Type field.
 		b.handleAgentEvent(event.Payload)
+
+	// ── Handoff ──────────────────────────────────────────────────────────────
 	case protocol.EventHandoff:
-		b.addNotification("handoff", "", "Agent handoff occurred")
-	case protocol.EventTeamUpserted:
-		b.handleTeamUpserted(event.Payload)
-	case protocol.EventTeamTaskCreated:
-		b.addNotification("team", "", "Team task created")
-	case protocol.EventTeamTaskCompleted:
-		b.addNotification("team", "", "Team task completed")
-	case protocol.EventTeamMessageSent:
-		b.addNotification("team", "", "Team message sent")
+		b.handleHandoff(event.Payload)
+
+	// ── Delegation lifecycle ──────────────────────────────────────────────────
 	case protocol.EventDelegationStarted:
 		b.handleDelegationStarted(event.Payload)
 	case protocol.EventDelegationCompleted:
 		b.handleDelegationCompleted(event.Payload)
-	case "delegation.cancelled":
-		b.handleDelegationTerminal(event.Payload, "cancelled")
-	case "delegation.failed":
+	case protocol.EventDelegationFailed:
 		b.handleDelegationTerminal(event.Payload, "failed")
+	case protocol.EventDelegationCancelled:
+		b.handleDelegationTerminal(event.Payload, "cancelled")
+	case protocol.EventDelegationProgress:
+		b.handleDelegationProgress(event.Payload)
+	case protocol.EventDelegationAccumulated:
+		b.handleDelegationAccumulated(event.Payload)
+	case protocol.EventDelegationAnnounce:
+		b.handleDelegationAnnounce(event.Payload)
+	case protocol.EventQualityGateRetry:
+		b.handleQualityGateRetry(event.Payload)
+
+	// ── Team task lifecycle ───────────────────────────────────────────────────
+	case protocol.EventTeamTaskCreated:
+		b.handleTeamTaskEvent(event.Payload, "created")
+	case protocol.EventTeamTaskClaimed:
+		b.handleTeamTaskEvent(event.Payload, "claimed")
+	case protocol.EventTeamTaskCompleted:
+		b.handleTeamTaskEvent(event.Payload, "completed")
+	case protocol.EventTeamTaskCancelled:
+		b.handleTeamTaskEvent(event.Payload, "cancelled")
+
+	// ── Team CRUD ─────────────────────────────────────────────────────────────
+	case protocol.EventTeamCreated:
+		b.handleTeamCreated(event.Payload)
+	case protocol.EventTeamUpdated:
+		b.handleTeamUpdated(event.Payload)
+	case protocol.EventTeamDeleted:
+		b.handleTeamDeleted(event.Payload)
+	case protocol.EventTeamMemberAdded:
+		b.handleTeamMemberChanged(event.Payload, "added")
+	case protocol.EventTeamMemberRemoved:
+		b.handleTeamMemberChanged(event.Payload, "removed")
+	case protocol.EventTeamUpserted:
+		b.handleTeamUpserted(event.Payload) // legacy fallback
+
+	// ── Team messages ─────────────────────────────────────────────────────────
+	case protocol.EventTeamMessageSent:
+		b.handleTeamMessageSent(event.Payload)
+
+	// ── Agent links ───────────────────────────────────────────────────────────
+	case protocol.EventAgentLinkCreated:
+		b.handleAgentLinkCreated(event.Payload)
+	case protocol.EventAgentLinkUpdated:
+		b.handleAgentLinkUpdated(event.Payload)
+	case protocol.EventAgentLinkDeleted:
+		b.handleAgentLinkDeleted(event.Payload)
+
+	// ── System ────────────────────────────────────────────────────────────────
 	case protocol.EventShutdown:
 		b.addNotification("system", "", "Shutdown signal received")
 	}
@@ -109,14 +159,24 @@ func (b *Bridge) handleAgentEvent(payload interface{}) {
 	switch evt.Type {
 	case protocol.AgentEventRunStarted:
 		b.state.SetAgentState(evt.AgentID, StateThinking, evt.RunID)
-		if ch := extractStringField(evt.Payload, "channel"); ch != "" {
+		// Channel comes directly on evt now (enriched by emitRun wrapper)
+		ch := evt.Channel
+		if ch == "" {
+			ch = extractStringField(evt.Payload, "channel") // fallback for older events
+		}
+		if ch != "" {
 			b.state.SetAgentChannel(evt.AgentID, normalizeChannelType(ch))
 		}
-		// Show fallback bubble for non-streaming channels (no ChatEventChunk emitted).
-		// Streaming channels will overwrite this with live text as chunks arrive.
+		// Tag member agents visually via ParentAgentID
+		if evt.ParentAgentID != "" {
+			b.state.SetAgentMeta(evt.AgentID, "", "") // mark as delegation member
+		}
 		b.state.SetSpeechBubble(evt.AgentID, "Processing...")
-		b.addNotification("run.started", evt.AgentID,
-			fmt.Sprintf("Agent %s started processing", evt.AgentID))
+		msg := fmt.Sprintf("Agent %s started", evt.AgentID)
+		if evt.ParentAgentID != "" {
+			msg = fmt.Sprintf("Agent %s started (member of %s)", evt.AgentID, evt.ParentAgentID)
+		}
+		b.addNotification("run.started", evt.AgentID, msg)
 
 	case protocol.AgentEventRunCompleted:
 		b.state.SetAgentState(evt.AgentID, StateIdle, evt.RunID)
@@ -219,51 +279,285 @@ func extractStringField(payload interface{}, key string) string {
 }
 
 // handleDelegationStarted adds a new arc to ActiveDelegations and emits a notification.
-// Payload is map[string]string from delegate_events.go: delegation_id, source_agent, target_agent, mode.
-// Also sets speech bubbles on both agents so the 3D scene shows them "talking" before the task begins.
+// Uses typed DelegationEventPayload from protocol package.
 func (b *Bridge) handleDelegationStarted(payload interface{}) {
-	id := extractStringField(payload, "delegation_id")
-	source := extractStringField(payload, "source_agent")
-	target := extractStringField(payload, "target_agent")
-	mode := extractStringField(payload, "mode")
-	// Always notify; only track arc when we have a real delegation ID.
-	if id != "" {
-		b.state.AddDelegation(OfficeDelegation{
-			ID:        id,
-			SourceID:  source,
-			TargetID:  target,
-			Status:    "running",
-			Mode:      mode,
-			StartedAt: time.Now(),
-		})
+	var p protocol.DelegationEventPayload
+	if !unmarshalPayload(payload, &p) || p.DelegationID == "" {
+		return
 	}
-	// Show handshake speech bubbles so agents appear to talk before the task starts.
-	if source != "" {
-		b.state.SetSpeechBubble(source, "→ Briefing "+target+"...")
+
+	b.state.AddDelegation(OfficeDelegation{
+		ID:                p.DelegationID,
+		SourceID:          p.SourceAgentKey,
+		TargetID:          p.TargetAgentKey,
+		SourceDisplayName: p.SourceDisplayName,
+		TargetDisplayName: p.TargetDisplayName,
+		Task:              p.Task,
+		Status:            "running",
+		Mode:              p.Mode,
+		TeamID:            p.TeamID,
+		StartedAt:         time.Now(),
+	})
+	// Show handshake speech bubbles
+	if p.SourceAgentKey != "" {
+		b.state.SetSpeechBubble(p.SourceAgentKey, "→ Briefing "+nameOf(p.TargetDisplayName, p.TargetAgentKey)+"...")
 	}
-	if target != "" {
-		b.state.SetSpeechBubble(target, "← Receiving task...")
+	if p.TargetAgentKey != "" {
+		b.state.SetSpeechBubble(p.TargetAgentKey, "← Receiving task...")
 	}
-	b.addNotification("delegation", "", fmt.Sprintf("Delegation started: %s → %s", source, target))
+	b.addNotification("delegation", p.SourceAgentKey,
+		fmt.Sprintf("Delegation: %s → %s [%s]",
+			nameOf(p.SourceDisplayName, p.SourceAgentKey),
+			nameOf(p.TargetDisplayName, p.TargetAgentKey), p.Mode))
 }
 
 // handleDelegationCompleted marks the arc as completed and emits a notification.
 func (b *Bridge) handleDelegationCompleted(payload interface{}) {
-	id := extractStringField(payload, "delegation_id")
-	target := extractStringField(payload, "target_agent")
-	if id != "" {
-		b.state.CompleteDelegation(id, "completed")
+	var p protocol.DelegationEventPayload
+	if !unmarshalPayload(payload, &p) || p.DelegationID == "" {
+		return
 	}
-	b.addNotification("delegation", "", fmt.Sprintf("Delegation completed → %s", target))
+	b.state.CompleteDelegation(p.DelegationID, "completed")
+	b.addNotification("delegation", p.TargetAgentKey,
+		fmt.Sprintf("Delegation completed: %s", nameOf(p.TargetDisplayName, p.TargetAgentKey)))
 }
 
 // handleDelegationTerminal marks the arc with the given terminal status (cancelled/failed).
 func (b *Bridge) handleDelegationTerminal(payload interface{}, status string) {
-	id := extractStringField(payload, "delegation_id")
-	if id != "" {
-		b.state.CompleteDelegation(id, status)
+	var p protocol.DelegationEventPayload
+	if !unmarshalPayload(payload, &p) || p.DelegationID == "" {
+		return
 	}
-	b.addNotification("delegation", "", fmt.Sprintf("Delegation %s", status))
+	b.state.CompleteDelegation(p.DelegationID, status)
+	b.addNotification("delegation", p.TargetAgentKey,
+		fmt.Sprintf("Delegation %s: %s", status, nameOf(p.TargetDisplayName, p.TargetAgentKey)))
+}
+
+// handleDelegationProgress updates elapsed timers on active arcs.
+func (b *Bridge) handleDelegationProgress(payload interface{}) {
+	var p protocol.DelegationProgressPayload
+	if !unmarshalPayload(payload, &p) {
+		return
+	}
+	for _, d := range p.Active {
+		b.state.UpdateDelegationElapsed(d.DelegationID, d.ElapsedMS)
+	}
+	// No notification — progress is silent, just updates arc labels.
+}
+
+// handleDelegationAccumulated dims member + shows lead waiting bubble.
+func (b *Bridge) handleDelegationAccumulated(payload interface{}) {
+	var p protocol.DelegationAccumulatedPayload
+	if !unmarshalPayload(payload, &p) {
+		return
+	}
+	if p.TargetAgentKey != "" {
+		b.state.SetSpeechBubble(p.TargetAgentKey, "Done — waiting for team...")
+	}
+	if p.SourceAgentKey != "" {
+		b.state.SetSpeechBubble(p.SourceAgentKey, "Waiting for teammates...")
+	}
+	b.addNotification("delegation", p.TargetAgentKey,
+		fmt.Sprintf("%s result ready, %d sibling(s) still running",
+			nameOf(p.TargetDisplayName, p.TargetAgentKey), p.SiblingsRemaining))
+}
+
+// handleDelegationAnnounce shows "all results in" on lead bubble.
+func (b *Bridge) handleDelegationAnnounce(payload interface{}) {
+	var p protocol.DelegationAnnouncePayload
+	if !unmarshalPayload(payload, &p) {
+		return
+	}
+	if p.SourceAgentKey != "" {
+		b.state.SetSpeechBubble(p.SourceAgentKey, "All results in!")
+	}
+	summary := fmt.Sprintf("Delegation results: %d agent(s), %dms total",
+		len(p.Results), p.TotalElapsedMS)
+	b.addNotification("delegation", p.SourceAgentKey, summary)
+}
+
+// handleQualityGateRetry shows retry bubble on member agent.
+func (b *Bridge) handleQualityGateRetry(payload interface{}) {
+	var p protocol.QualityGateRetryPayload
+	if !unmarshalPayload(payload, &p) {
+		return
+	}
+	bubble := fmt.Sprintf("Retry %d/%d", p.Attempt, p.MaxRetries)
+	if p.Feedback != "" {
+		bubble += ": " + truncate(p.Feedback, 60)
+	}
+	if p.TargetAgentKey != "" {
+		b.state.SetSpeechBubble(p.TargetAgentKey, bubble)
+	}
+	b.addNotification("delegation", p.TargetAgentKey,
+		fmt.Sprintf("Quality gate retry %d/%d [%s]: %s",
+			p.Attempt, p.MaxRetries, p.GateType, truncate(p.Feedback, 60)))
+}
+
+// handleTeamTaskEvent handles team task lifecycle events.
+func (b *Bridge) handleTeamTaskEvent(payload interface{}, action string) {
+	var p protocol.TeamTaskEventPayload
+	if !unmarshalPayload(payload, &p) {
+		return
+	}
+	var msg string
+	switch action {
+	case "created":
+		msg = fmt.Sprintf("Task created: %s", truncate(p.Subject, 50))
+	case "claimed":
+		msg = fmt.Sprintf("%s claimed: %s", nameOf(p.OwnerDisplayName, p.OwnerAgentKey), truncate(p.Subject, 50))
+	case "completed":
+		msg = fmt.Sprintf("Task completed: %s", truncate(p.Subject, 50))
+	case "cancelled":
+		msg = fmt.Sprintf("Task cancelled: %s", truncate(p.Reason, 50))
+	}
+	b.addNotification("team", "", msg)
+}
+
+// handleTeamCreated creates a new team platform.
+func (b *Bridge) handleTeamCreated(payload interface{}) {
+	var p protocol.TeamCreatedPayload
+	if !unmarshalPayload(payload, &p) || p.TeamID == "" {
+		return
+	}
+	b.state.UpsertTeam(OfficeTeam{
+		ID:     p.TeamID,
+		Name:   p.TeamName,
+		LeadID: p.LeadAgentKey,
+	})
+	b.addNotification("team", "", fmt.Sprintf("Team created: %s (%d members)", p.TeamName, p.MemberCount))
+}
+
+// handleTeamUpdated updates team settings.
+func (b *Bridge) handleTeamUpdated(payload interface{}) {
+	var p protocol.TeamUpdatedPayload
+	if !unmarshalPayload(payload, &p) || p.TeamID == "" {
+		return
+	}
+	// Partial update — only update name if we have the team
+	if team, ok := b.state.Teams[p.TeamID]; ok {
+		team.Name = p.TeamName
+		b.state.UpdatedAt = time.Now()
+	}
+	b.addNotification("team", "", fmt.Sprintf("Team updated: %s", p.TeamName))
+}
+
+// handleTeamDeleted removes team platform — fixes ghost bug.
+func (b *Bridge) handleTeamDeleted(payload interface{}) {
+	var p protocol.TeamDeletedPayload
+	if !unmarshalPayload(payload, &p) || p.TeamID == "" {
+		return
+	}
+	b.state.RemoveTeam(p.TeamID)
+	b.addNotification("team", "", fmt.Sprintf("Team deleted: %s", p.TeamName))
+}
+
+// handleTeamMemberChanged updates team membership.
+func (b *Bridge) handleTeamMemberChanged(payload interface{}, action string) {
+	var p protocol.TeamMemberAddedPayload
+	if !unmarshalPayload(payload, &p) || p.TeamID == "" {
+		return
+	}
+	// Note: For removal, TeamMemberRemovedPayload has same fields we need
+	if team, ok := b.state.Teams[p.TeamID]; ok {
+		if action == "added" {
+			team.Members = append(team.Members, p.AgentKey)
+		} else {
+			// Remove member
+			for i, m := range team.Members {
+				if m == p.AgentKey {
+					team.Members = append(team.Members[:i], team.Members[i+1:]...)
+					break
+				}
+			}
+		}
+		b.state.UpdatedAt = time.Now()
+	}
+	b.addNotification("team", "",
+		fmt.Sprintf("Member %s: %s", action, nameOf(p.DisplayName, p.AgentKey)))
+}
+
+// handleTeamMessageSent handles team message events.
+func (b *Bridge) handleTeamMessageSent(payload interface{}) {
+	var p protocol.TeamMessageEventPayload
+	if !unmarshalPayload(payload, &p) {
+		return
+	}
+	b.addNotification("team", p.FromAgentKey,
+		fmt.Sprintf("%s -> %s: %s",
+			nameOf(p.FromDisplayName, p.FromAgentKey),
+			nameOf(p.ToDisplayName, p.ToAgentKey),
+			truncate(p.Preview, 40)))
+}
+
+// handleAgentLinkCreated adds a persistent arc to state.
+func (b *Bridge) handleAgentLinkCreated(payload interface{}) {
+	var p protocol.AgentLinkCreatedPayload
+	if !unmarshalPayload(payload, &p) || p.LinkID == "" {
+		return
+	}
+	b.state.UpsertAgentLink(OfficeAgentLink{
+		ID:             p.LinkID,
+		SourceAgentKey: p.SourceAgentKey,
+		TargetAgentKey: p.TargetAgentKey,
+		Direction:      p.Direction,
+		Status:         p.Status,
+	})
+	b.addNotification("agent_link", "",
+		fmt.Sprintf("Link created: %s -> %s [%s]", p.SourceAgentKey, p.TargetAgentKey, p.Direction))
+}
+
+// handleAgentLinkUpdated updates a persistent arc.
+func (b *Bridge) handleAgentLinkUpdated(payload interface{}) {
+	var p protocol.AgentLinkUpdatedPayload
+	if !unmarshalPayload(payload, &p) || p.LinkID == "" {
+		return
+	}
+	b.state.UpsertAgentLink(OfficeAgentLink{
+		ID:             p.LinkID,
+		SourceAgentKey: p.SourceAgentKey,
+		TargetAgentKey: p.TargetAgentKey,
+		Direction:      p.Direction,
+		Status:         p.Status,
+	})
+	b.addNotification("agent_link", "",
+		fmt.Sprintf("Link updated: %s -> %s", p.SourceAgentKey, p.TargetAgentKey))
+}
+
+// handleAgentLinkDeleted removes a persistent arc.
+func (b *Bridge) handleAgentLinkDeleted(payload interface{}) {
+	var p protocol.AgentLinkDeletedPayload
+	if !unmarshalPayload(payload, &p) || p.LinkID == "" {
+		return
+	}
+	b.state.RemoveAgentLink(p.LinkID)
+	b.addNotification("agent_link", "",
+		fmt.Sprintf("Link removed: %s -> %s", p.SourceAgentKey, p.TargetAgentKey))
+}
+
+// handleHandoff handles agent handoff events.
+func (b *Bridge) handleHandoff(payload interface{}) {
+	from := extractStringField(payload, "from_agent")
+	to := extractStringField(payload, "to_agent")
+	reason := extractStringField(payload, "reason")
+	if from != "" {
+		b.state.SetSpeechBubble(from, "-> Handing off to "+to+"...")
+	}
+	if to != "" {
+		b.state.SetSpeechBubble(to, "<- Taking over...")
+	}
+	arcID := fmt.Sprintf("handoff-%d", time.Now().UnixNano())
+	b.state.AddDelegation(OfficeDelegation{
+		ID:        arcID,
+		SourceID:  from,
+		TargetID:  to,
+		Status:    "running",
+		Mode:      "handoff",
+		StartedAt: time.Now(),
+	})
+	b.state.CompleteDelegation(arcID, "completed") // instantaneous
+	b.addNotification("handoff", from,
+		fmt.Sprintf("Handoff: %s -> %s (%s)", from, to, truncate(reason, 60)))
 }
 
 // handleTeamUpserted creates or updates a team platform in the 3D scene.
@@ -328,4 +622,21 @@ func normalizeChannelType(ch string) string {
 		}
 	}
 	return ch // unknown/internal channels (heartbeat, cli, system) — renderer ignores these
+}
+
+// unmarshalPayload JSON round-trips an opaque bus payload into a typed struct.
+func unmarshalPayload[T any](payload interface{}, out *T) bool {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return false
+	}
+	return json.Unmarshal(data, out) == nil
+}
+
+// nameOf returns displayName if set, else key.
+func nameOf(displayName, key string) string {
+	if displayName != "" {
+		return displayName
+	}
+	return key
 }

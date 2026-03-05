@@ -55,12 +55,26 @@ type OfficeTeam struct {
 
 // OfficeDelegation tracks an active delegation arc between two agents.
 type OfficeDelegation struct {
-	ID        string    `json:"id"`
-	SourceID  string    `json:"sourceId"`
-	TargetID  string    `json:"targetId"`
-	Status    string    `json:"status"` // "running","completed","failed","cancelled"
-	Mode      string    `json:"mode"`   // "sync","async"
-	StartedAt time.Time `json:"startedAt"`
+	ID                string    `json:"id"`
+	SourceID          string    `json:"sourceId"`          // source_agent_key
+	TargetID          string    `json:"targetId"`          // target_agent_key
+	SourceDisplayName string    `json:"sourceDisplayName,omitempty"`
+	TargetDisplayName string    `json:"targetDisplayName,omitempty"`
+	Task              string    `json:"task,omitempty"`    // delegation task description
+	Status            string    `json:"status"`            // running/completed/failed/cancelled
+	Mode              string    `json:"mode"`              // sync/async/handoff
+	TeamID            string    `json:"teamId,omitempty"`
+	ElapsedMS         int       `json:"elapsedMs,omitempty"` // updated by progress events
+	StartedAt         time.Time `json:"startedAt"`
+}
+
+// OfficeAgentLink represents a persistent link arc between two agents.
+type OfficeAgentLink struct {
+	ID             string `json:"id"`
+	SourceAgentKey string `json:"sourceAgentKey"`
+	TargetAgentKey string `json:"targetAgentKey"`
+	Direction      string `json:"direction"` // outbound/inbound/bidirectional
+	Status         string `json:"status"`    // active/inactive
 }
 
 // GatewayDesk represents the central gateway status panel.
@@ -85,12 +99,13 @@ type Notification struct {
 // OfficeState is the full snapshot of the office floor — mutex-protected in-memory state.
 // Call Snapshot() to get a JSON-safe copy for serialization.
 type OfficeState struct {
-	Gateway           GatewayDesk             `json:"gateway"`
+	Gateway           GatewayDesk              `json:"gateway"`
 	Agents            map[string]*OfficeAgent  `json:"agents"`
 	Notifications     []Notification           `json:"notifications"`
-	UpdatedAt         time.Time               `json:"updatedAt"`
+	UpdatedAt         time.Time                `json:"updatedAt"`
 	Teams             map[string]*OfficeTeam   `json:"teams,omitempty"`
 	ActiveDelegations []OfficeDelegation       `json:"activeDelegations,omitempty"`
+	AgentLinks        []OfficeAgentLink        `json:"agentLinks,omitempty"`
 
 	mu        sync.RWMutex
 	maxNotifs int
@@ -159,6 +174,10 @@ func (s *OfficeState) Snapshot() OfficeState {
 	delegations := make([]OfficeDelegation, len(s.ActiveDelegations))
 	copy(delegations, s.ActiveDelegations)
 
+	// Copy agent links slice.
+	links := make([]OfficeAgentLink, len(s.AgentLinks))
+	copy(links, s.AgentLinks)
+
 	// Return a fresh struct literal — does NOT copy the live mutex.
 	return OfficeState{
 		Gateway:           gw,
@@ -166,6 +185,7 @@ func (s *OfficeState) Snapshot() OfficeState {
 		Notifications:     notifs,
 		Teams:             teams,
 		ActiveDelegations: delegations,
+		AgentLinks:        links,
 		UpdatedAt:         s.UpdatedAt,
 	}
 }
@@ -327,4 +347,52 @@ func (s *OfficeState) CompleteDelegation(id, status string) {
 		}
 	}
 	s.UpdatedAt = time.Now()
+}
+
+// RemoveTeam deletes a team from state (fixes ghost platform bug).
+func (s *OfficeState) RemoveTeam(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.Teams, id)
+	s.UpdatedAt = time.Now()
+}
+
+// UpdateDelegationElapsed updates the elapsed time for an active delegation.
+func (s *OfficeState) UpdateDelegationElapsed(delegationID string, elapsedMS int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.ActiveDelegations {
+		if s.ActiveDelegations[i].ID == delegationID {
+			s.ActiveDelegations[i].ElapsedMS = elapsedMS
+			break
+		}
+	}
+}
+
+// UpsertAgentLink adds or updates a persistent agent link.
+func (s *OfficeState) UpsertAgentLink(link OfficeAgentLink) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.AgentLinks {
+		if s.AgentLinks[i].ID == link.ID {
+			s.AgentLinks[i] = link
+			s.UpdatedAt = time.Now()
+			return
+		}
+	}
+	s.AgentLinks = append(s.AgentLinks, link)
+	s.UpdatedAt = time.Now()
+}
+
+// RemoveAgentLink removes a persistent agent link by ID.
+func (s *OfficeState) RemoveAgentLink(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.AgentLinks {
+		if s.AgentLinks[i].ID == id {
+			s.AgentLinks = append(s.AgentLinks[:i], s.AgentLinks[i+1:]...)
+			s.UpdatedAt = time.Now()
+			return
+		}
+	}
 }
