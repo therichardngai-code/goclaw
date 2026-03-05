@@ -9,8 +9,8 @@ import (
 	"net/http"
 )
 
-//go:embed renderer
-var rendererFS embed.FS
+//go:embed dist
+var distFS embed.FS
 
 // Handler serves the Agent Office UI and API endpoints.
 // Three routes: GET /office (UI), GET /office/state (JSON snapshot), GET /office/events (SSE stream).
@@ -30,13 +30,21 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/office/state", h.ServeState)
 	mux.HandleFunc("/office/events", h.ServeSSE)
 
-	// Serve 3D assets (GLB models, textures) embedded from renderer/assets/.
-	assets, err := fs.Sub(rendererFS, "renderer/assets")
+	// Serve Vite JS/CSS bundles from dist/static/
+	static, err := fs.Sub(distFS, "dist/static")
 	if err != nil {
-		slog.Error("office: failed to sub renderer/assets", "error", err)
-		return
+		slog.Error("office: failed to sub dist/static", "error", err)
+	} else {
+		mux.Handle("/office/static/", http.StripPrefix("/office/static/", http.FileServer(http.FS(static))))
 	}
-	mux.Handle("/office/assets/", http.StripPrefix("/office/assets/", http.FileServer(http.FS(assets))))
+
+	// Serve 3D assets (GLB models, textures) from dist/assets/
+	assets, err := fs.Sub(distFS, "dist/assets")
+	if err != nil {
+		slog.Error("office: failed to sub dist/assets", "error", err)
+	} else {
+		mux.Handle("/office/assets/", http.StripPrefix("/office/assets/", http.FileServer(http.FS(assets))))
+	}
 }
 
 // ServeUI serves the embedded index.html. No auth required — HTML shell contains no data.
@@ -46,7 +54,7 @@ func (h *Handler) ServeUI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := fs.ReadFile(rendererFS, "renderer/index.html")
+	data, err := fs.ReadFile(distFS, "dist/index.html")
 	if err != nil {
 		slog.Error("office.serve_ui: read embedded file failed", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
