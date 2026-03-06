@@ -33,13 +33,19 @@ export function shortestAngle(from: number, to: number): number {
 }
 
 // Map agent state to animation category
+//   idle     → agent waiting
+//   working  → agent thinking / calling tools
+//   talking  → agent responding (with speech) or receiving a task
+//   victory  → task just completed (caller manages transition back to idle)
+//   walking  → kept for wander locomotion override (not a GoClaw state)
 export function toAnimState(
   agentState: string,
   hasSpeechBubble: boolean
-): "idle" | "walking" | "talking" {
-  if (hasSpeechBubble && agentState === "responding") return "talking";
+): "idle" | "working" | "talking" | "victory" {
   if (agentState === "idle" || agentState === "error") return "idle";
-  return "walking";
+  if (agentState === "receiving") return "talking";
+  if (agentState === "responding" && hasSpeechBubble) return "talking";
+  return "working"; // thinking, tool_calling, responding (no speech yet)
 }
 
 // Deterministic wall theme for a platform key

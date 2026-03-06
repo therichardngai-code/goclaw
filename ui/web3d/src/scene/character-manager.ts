@@ -120,7 +120,13 @@ export class CharacterManager {
     // Trigger anim state update
     const as = toAnimState(data.state, !!data.speechBubble);
     if (as !== a.animState) {
-      this.applyAnim(id, as);
+      // Play victory when transitioning from active → idle (task complete)
+      const wasActive = a.animState === "working" || a.animState === "talking";
+      if (as === "idle" && wasActive) {
+        this.applyAnim(id, "victory");
+      } else {
+        this.applyAnim(id, as);
+      }
     }
   }
 
@@ -314,7 +320,19 @@ export class CharacterManager {
           cleanTracks
         );
         const action = a.mixer.clipAction(cleanClip);
-        action.setLoop(THREE.LoopRepeat, Infinity);
+
+        if (animState === "victory") {
+          // Play once then fall back to idle
+          action.setLoop(THREE.LoopOnce, 1);
+          action.clampWhenFinished = true;
+          a.mixer.addEventListener("finished", () => {
+            if (this.map.has(id) && a.animState === "victory") {
+              this.applyAnim(id, "idle");
+            }
+          });
+        } else {
+          action.setLoop(THREE.LoopRepeat, Infinity);
+        }
         action.play();
       }
     } catch (err) {
@@ -350,7 +368,7 @@ export class CharacterManager {
       if (a.mixer) {
         a.mixer.update(delta);
 
-        if (a.animMesh && a.animState !== "idle") {
+        if (a.animMesh && (a.animState === "working" || a.animState === "talking")) {
           if (a.talkingWith) {
             const other = this.map.get(a.talkingWith);
             if (other) {
