@@ -13,7 +13,23 @@ function buildMergedAgents(
   const live = snapshot?.agents ?? {};
   const merged: Record<string, OfficeAgent> = {};
 
+  // Deduplicate apiAgents by agent_key — owner users see all agents across all
+  // users, so the same key can appear multiple times (e.g. stale "default"
+  // agents created under wrong owner_id). Prefer the one that is live in SSE;
+  // on tie, keep first.
+  const dedupedByKey = new Map<string, AgentRecord>();
   for (const api of apiAgents) {
+    const existing = dedupedByKey.get(api.agent_key);
+    if (!existing) {
+      dedupedByKey.set(api.agent_key, api);
+    } else if (live[api.id] && !live[existing.id]) {
+      // This one is SSE-live, the existing one is not — prefer this one
+      dedupedByKey.set(api.agent_key, api);
+    }
+  }
+  const dedupedAgents = Array.from(dedupedByKey.values());
+
+  for (const api of dedupedAgents) {
     const liveAgent = live[api.id];
     const ci = charIdx(api.agent_key);
     merged[api.id] = {

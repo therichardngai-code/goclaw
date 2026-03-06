@@ -68,6 +68,26 @@ export class CharacterManager {
     }
 
     const a = this.map.get(id)!;
+
+    // Detect character change — happens when the merged snapshot replaces the
+    // UUID-keyed SSE agent with the correctly-keyed API agent (charIdx(key) vs
+    // charIdx(UUID) differ). Clear cached meshes so the correct model loads.
+    const prevCi = charIdx(a.data.name);
+    const newCi = charIdx(data.name);
+    if (prevCi !== newCi) {
+      if (a.staticMesh) {
+        a.group.remove(a.staticMesh);
+        a.staticMesh = null;
+      }
+      if (a.animMesh) {
+        if (a.mixer) { a.mixer.stopAllAction(); a.mixer = null; }
+        a.group.remove(a.animMesh);
+        a.animMesh = null;
+      }
+      a.animState = null;   // force applyAnim on next check
+      a.animGLBName = null;
+    }
+
     a.data = data;
 
     // Update name
