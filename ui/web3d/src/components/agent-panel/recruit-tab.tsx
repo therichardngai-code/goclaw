@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AGENT_PRESETS, type AgentPreset } from "@/data/agent-presets";
 import { CharacterPreview } from "./character-preview";
 import { AgentCreateForm } from "./agent-create-form";
+import { useOfficeStore } from "@/stores/use-office-store";
 
 // Open agent uses character-male-c (has talking anim, feels versatile)
 const OPEN_CHAR_INDEX = 8;
@@ -11,8 +12,24 @@ interface Props {
 }
 
 export function RecruitTab({ onSuccess }: Props) {
+  const snapshot = useOfficeStore((s) => s.snapshot);
+  const isStandalone = snapshot?.gateway.mode === "standalone";
   const [subTab, setSubTab] = useState<"predefined" | "open">("predefined");
   const [selected, setSelected] = useState<AgentPreset | null>(null);
+
+  if (isStandalone) {
+    return (
+      <div className="flex h-full items-center justify-center p-8">
+        <div className="text-center max-w-sm">
+          <p className="text-gray-300 text-sm font-medium mb-2">Standalone Mode</p>
+          <p className="text-gray-500 text-xs leading-relaxed">
+            Agent creation is not available in standalone mode.
+            Add agents to your <code className="text-gray-400 bg-[#1a1a24] px-1 py-0.5 rounded">config.json</code> and restart GoClaw.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const inCreateMode = selected !== null || subTab === "open";
 
