@@ -32,14 +32,15 @@ export class OfficeSSEClient {
       this.handlers.connected.forEach((cb) => cb());
     };
 
-    this.es.onmessage = (event) => {
+    // Server sends named "state" events — onmessage only fires for unnamed events
+    this.es.addEventListener("state", (event: Event) => {
       try {
-        const snapshot: OfficeSnapshot = JSON.parse(event.data);
+        const snapshot: OfficeSnapshot = JSON.parse((event as MessageEvent).data);
         this.handlers.snapshot.forEach((cb) => cb(snapshot));
       } catch {
         // Ignore parse errors
       }
-    };
+    });
 
     this.es.onerror = () => {
       this.handlers.disconnected.forEach((cb) => cb());
