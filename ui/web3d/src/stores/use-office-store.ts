@@ -17,14 +17,19 @@ function buildMergedAgents(
   // users, so the same key can appear multiple times (e.g. stale "default"
   // agents created under wrong owner_id). Prefer the one that is live in SSE;
   // on tie, keep first.
+  // Also track loser UUIDs so the fallback SSE loop below doesn't re-add them.
   const dedupedByKey = new Map<string, AgentRecord>();
+  const loserIds = new Set<string>();
   for (const api of apiAgents) {
     const existing = dedupedByKey.get(api.agent_key);
     if (!existing) {
       dedupedByKey.set(api.agent_key, api);
     } else if (live[api.id] && !live[existing.id]) {
       // This one is SSE-live, the existing one is not — prefer this one
+      loserIds.add(existing.id);
       dedupedByKey.set(api.agent_key, api);
+    } else {
+      loserIds.add(api.id);
     }
   }
   const dedupedAgents = Array.from(dedupedByKey.values());
@@ -48,9 +53,12 @@ function buildMergedAgents(
     };
   }
 
-  // Include any snapshot agents not in the API list (edge cases, e.g. standalone)
+  // Include SSE-only agents (not in API list — e.g. standalone mode agents).
+  // Skip loser UUIDs: stale duplicates of the same agent_key that were not
+  // selected by dedup above. Without this, the stale UUID re-enters as a
+  // second character in the scene even though dedup already excluded it.
   for (const [id, agent] of Object.entries(live)) {
-    if (!merged[id]) {
+    if (!merged[id] && !loserIds.has(id)) {
       merged[id] = { ...agent, characterIndex: charIdx(agent.name) };
     }
   }
