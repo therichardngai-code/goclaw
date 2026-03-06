@@ -54,13 +54,15 @@ export function wallTheme(key: string): "arcade" | "market" {
 // Resolve platform key for an agent
 export function resolvePlatform(
   agent: { id: string; state: string; currentChannel?: string } | null,
-  teams: Record<string, { members?: string[] }>
+  teams: Record<string, { leadId?: string; members?: string[] }>
 ): string {
   if (!agent) return "idle";
 
-  // Team members always belong to their team zone
+  // Team leads and members always belong to their team zone
   for (const [tid, team] of Object.entries(teams)) {
-    if (team.members?.includes(agent.id)) return `team:${tid}`;
+    if (team.leadId === agent.id || team.members?.includes(agent.id)) {
+      return `team:${tid}`;
+    }
   }
 
   // Only show channel platform while agent is actively processing
