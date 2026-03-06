@@ -83,6 +83,11 @@ export const ANIM_GLB: Array<{
 export const HOME_SLOT_Y = 1.8;  // upper deck of space-station
 export const DEFAULT_SLOT_Y = 0.15;
 
+// Platform room Y rotation (radians) — camera sits at PI/4 (45°) from +Z toward +X
+// Tune these so each room's entrance faces the camera
+export const HOME_ROTATION_Y = Math.PI;          // space-station
+export const ROOM_ROTATION_Y = -Math.PI / 2;     // arcade-full / mini-market-full
+
 // Movement constants
 export const WALK_SPEED = 0.35;
 export const WANDER_RANGE = 0.45;

@@ -3,7 +3,7 @@ import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
 import { ASSET_BASE, CHAN_COLOR } from "./constants";
 import { cap, hex6 } from "./utils";
-import { HOME_SLOT_Y, DEFAULT_SLOT_Y } from "./constants";
+import { HOME_SLOT_Y, DEFAULT_SLOT_Y, HOME_ROTATION_Y, ROOM_ROTATION_Y } from "./constants";
 import type { AssetLoader } from "./asset-loader";
 import type { CameraController } from "./camera-controller";
 
@@ -233,6 +233,9 @@ export class PlatformManager {
     if (!src) return;
 
     const mesh = SkeletonUtils.clone(src);
+
+    // Rotation to face isometric camera (PI/4 from +Z toward +X)
+    mesh.rotation.y = key === "idle" ? HOME_ROTATION_Y : ROOM_ROTATION_Y;
 
     // Native scale (100%) — sit on y=0
     const box = new THREE.Box3().setFromObject(mesh);
