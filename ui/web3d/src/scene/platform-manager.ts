@@ -152,19 +152,16 @@ export class PlatformManager {
 
   create(key: string, teams: Record<string, { name?: string }>): void {
     let color: number = CHAN_COLOR.idle ?? 0x334466;
-    let icon = "H";
     let name = "Home";
 
     if (key.startsWith("team:")) {
       const t = teams[key.slice(5)];
       color = CHAN_COLOR.team ?? 0xffd700;
-      icon = "T";
       name = t?.name || "Team";
     } else if (key !== "idle") {
       const chanColor = CHAN_COLOR[key];
       if (chanColor !== undefined) {
         color = chanColor;
-        icon = CHAN_ICON[key] || "X";
         name = cap(key);
       }
     }
@@ -210,7 +207,7 @@ export class PlatformManager {
     // Label
     const div = document.createElement("div");
     div.className = "platform-label";
-    div.textContent = `${icon} ${name}`;
+    div.textContent = name;
     div.style.color = hex6(color);
     div.style.fontSize = "0.72rem";
     div.style.fontWeight = "600";
