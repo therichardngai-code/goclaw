@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
 import { ASSET_BASE, CHAN_COLOR } from "./constants";
-import { cap, hex6, wallTheme } from "./utils";
+import { cap, hex6 } from "./utils";
 import type { AssetLoader } from "./asset-loader";
 import type { CameraController } from "./camera-controller";
 
@@ -18,12 +18,10 @@ export class PlatformManager {
   private loader: AssetLoader;
   private map = new Map<string, PlatformData>();
 
-  // Full room GLBs — arcade-full.glb / mini-market-full.glb
-  private roomGLBs: Record<"arcade" | "market", THREE.Object3D | null> = {
-    arcade: null,
-    market: null,
-  };
-  private roomPending: Array<[THREE.Group, number, number, number, "arcade" | "market"]> = [];
+  // Full room GLBs — space-station (Home) + arcade/mini-market (other platforms)
+  private homeGLB: THREE.Object3D | null = null;
+  private roomGLBs: Array<THREE.Object3D | null> = [null, null]; // [arcade-full, mini-market-full]
+  private roomPending: Array<[THREE.Group, number, number, number, string]> = [];
 
   constructor(scene: THREE.Scene, loader: AssetLoader) {
     this.scene = scene;
@@ -32,25 +30,27 @@ export class PlatformManager {
   }
 
   private async loadRooms(): Promise<void> {
-    const files: Array<["arcade" | "market", string]> = [
-      ["arcade", "arcade-full"],
-      ["market", "mini-market-full"],
-    ];
+    const [homeResult, ...roomResults] = await Promise.allSettled([
+      this.loader.loadGLTF(`${ASSET_BASE}/platform/space-station.glb`),
+      this.loader.loadGLTF(`${ASSET_BASE}/platform/arcade-full.glb`),
+      this.loader.loadGLTF(`${ASSET_BASE}/platform/mini-market-full.glb`),
+    ]);
 
-    await Promise.all(
-      files.map(async ([theme, file]) => {
-        try {
-          const gltf = await this.loader.loadGLTF(
-            `${ASSET_BASE}/platform/${file}.glb`
-          );
-          this.roomGLBs[theme] = gltf.scene;
-        } catch (err) {
-          console.warn("[office] room GLB failed:", file, err);
-        }
-      })
-    );
+    if (homeResult.status === "fulfilled") {
+      this.homeGLB = homeResult.value.scene;
+    } else {
+      console.warn("[office] space-station.glb failed:", homeResult.reason);
+    }
 
-    // Flush platforms that were created before GLBs finished loading
+    roomResults.forEach((result, i) => {
+      if (result.status === "fulfilled") {
+        this.roomGLBs[i] = result.value.scene;
+      } else {
+        console.warn("[office] room GLB failed index", i, result.reason);
+      }
+    });
+
+    // Flush platforms created before GLBs finished loading
     for (const args of this.roomPending) {
       this.addRoom(...args);
     }
@@ -114,11 +114,12 @@ export class PlatformManager {
     group.add(lbl);
 
     // Full room decoration
-    const theme = wallTheme(key);
-    if (this.roomGLBs[theme]) {
-      this.addRoom(group, color, W, D, theme);
+    const isHome = key === "idle";
+    const roomReady = isHome ? this.homeGLB !== null : this.roomGLBs.some(Boolean);
+    if (roomReady) {
+      this.addRoom(group, color, W, D, key);
     } else {
-      this.roomPending.push([group, color, W, D, theme]);
+      this.roomPending.push([group, color, W, D, key]);
     }
 
     this.scene.add(group);
@@ -209,9 +210,24 @@ export class PlatformManager {
     color: number,
     _W: number,
     _D: number,
-    theme: "arcade" | "market"
+    key: string
   ): void {
-    const src = this.roomGLBs[theme];
+    let src: THREE.Object3D | null;
+
+    if (key === "idle") {
+      // Home platform always uses space-station
+      src = this.homeGLB;
+    } else {
+      // Other platforms: deterministic pick from available room GLBs
+      const available = this.roomGLBs.filter(Boolean) as THREE.Object3D[];
+      if (!available.length) return;
+      let h = 0;
+      for (let i = 0; i < key.length; i++) {
+        h = (Math.imul(h, 31) + key.charCodeAt(i)) | 0;
+      }
+      src = available[Math.abs(h) % available.length] ?? null;
+    }
+
     if (!src) return;
 
     const mesh = SkeletonUtils.clone(src);
