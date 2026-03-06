@@ -10,10 +10,10 @@ import { CameraControls } from "./components/camera-controls";
 
 export function App() {
   const token = useOfficeStore((s) => s.token);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useOfficeState(token);
-  useScene(canvasRef);
+  useScene(containerRef);
 
   if (!token) {
     return <AuthGate />;
@@ -21,7 +21,7 @@ export function App() {
 
   return (
     <>
-      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
+      <div ref={containerRef} className="absolute inset-0" />
       <HUD />
       <ReconnectBanner />
       <NotificationPanel />

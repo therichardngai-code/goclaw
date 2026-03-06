@@ -38,6 +38,7 @@ export function toAnimState(
   hasSpeechBubble: boolean
 ): "idle" | "walking" | "talking" {
   if (hasSpeechBubble && agentState === "responding") return "talking";
+  if (agentState === "idle" || agentState === "error") return "idle";
   return "walking";
 }
 

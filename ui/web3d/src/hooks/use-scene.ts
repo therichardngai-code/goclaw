@@ -5,15 +5,15 @@ import { OfficeScene } from "@/scene/office-scene";
 // Global reference for camera controls
 let globalScene: OfficeScene | null = null;
 
-export function useScene(canvasRef: RefObject<HTMLCanvasElement | null>): void {
+export function useScene(containerRef: RefObject<HTMLDivElement | null>): void {
   const sceneRef = useRef<OfficeScene | null>(null);
   const snapshot = useOfficeStore((s) => s.snapshot);
 
   useEffect(() => {
-    if (!canvasRef.current) return;
+    if (!containerRef.current) return;
 
     const scene = new OfficeScene();
-    scene.init(canvasRef.current);
+    scene.init(containerRef.current);
     sceneRef.current = scene;
     globalScene = scene;
 
@@ -22,7 +22,7 @@ export function useScene(canvasRef: RefObject<HTMLCanvasElement | null>): void {
       sceneRef.current = null;
       globalScene = null;
     };
-  }, [canvasRef]);
+  }, [containerRef]);
 
   useEffect(() => {
     if (snapshot && sceneRef.current) {

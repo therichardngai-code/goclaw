@@ -23,13 +23,9 @@ export class OfficeScene {
 
   private layoutDirty = false;
 
-  init(canvas: HTMLCanvasElement): void {
-    // WebGL Renderer
-    this.renderer = new THREE.WebGLRenderer({
-      canvas,
-      antialias: true,
-      alpha: false,
-    });
+  init(container: HTMLDivElement): void {
+    // WebGL Renderer — let Three.js create its own canvas (matches original renderer)
+    this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setClearColor(0x06060f);
@@ -37,6 +33,10 @@ export class OfficeScene {
     this.renderer.toneMappingExposure = 1.4;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.domElement.style.position = "absolute";
+    this.renderer.domElement.style.top = "0";
+    this.renderer.domElement.style.left = "0";
+    container.appendChild(this.renderer.domElement);
 
     // CSS2D Renderer for labels
     this.css2dRenderer = new CSS2DRenderer();
@@ -45,7 +45,7 @@ export class OfficeScene {
     this.css2dRenderer.domElement.style.top = "0";
     this.css2dRenderer.domElement.style.left = "0";
     this.css2dRenderer.domElement.style.pointerEvents = "none";
-    canvas.parentElement?.appendChild(this.css2dRenderer.domElement);
+    container.appendChild(this.css2dRenderer.domElement);
 
     // Scene
     this.scene = new THREE.Scene();
@@ -265,6 +265,10 @@ export class OfficeScene {
 
     if (this.animationId !== null) {
       cancelAnimationFrame(this.animationId);
+    }
+
+    if (this.renderer?.domElement.parentElement) {
+      this.renderer.domElement.parentElement.removeChild(this.renderer.domElement);
     }
 
     if (this.css2dRenderer?.domElement.parentElement) {
