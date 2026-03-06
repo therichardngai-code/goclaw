@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
-import { ASSET_BASE, CHAN_COLOR, CHAN_ICON, MACHINE_DEFS } from "./constants";
+import { ASSET_BASE, CHAN_COLOR, MACHINE_DEFS } from "./constants";
 import { cap, hex6, wallTheme } from "./utils";
 import type { AssetLoader } from "./asset-loader";
 import type { CameraController } from "./camera-controller";
