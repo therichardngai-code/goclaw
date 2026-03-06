@@ -12,6 +12,27 @@ import type { AssetLoader } from "./asset-loader";
 import type { PlatformManager } from "./platform-manager";
 import type { OfficeAgent, OfficeTeam } from "@/api/types";
 
+// Map agent state + speechBubble → display text for the overhead bubble
+function formatBubble(state: string, speechBubble?: string): string {
+  if (state === "idle" || state === "error") return "";
+
+  if (speechBubble) {
+    // "Using: skill_search" → "skill_search"
+    if (speechBubble.startsWith("Using: ")) return speechBubble.slice(7);
+    // Delegation / coordination text from backend — show as-is
+    return speechBubble;
+  }
+
+  // Fallback labels when no speechBubble text yet
+  switch (state) {
+    case "thinking":    return "Thinking...";
+    case "responding":  return "Responding...";
+    case "tool_calling": return "Calling tool...";
+    case "receiving":   return "Receiving...";
+    default:            return "";
+  }
+}
+
 interface AgentData {
   group: THREE.Group;
   placeholder: THREE.Mesh | null;
@@ -64,15 +85,12 @@ export class CharacterManager {
     }
 
     // Activity indicator
-    if (data.state === "idle" || data.state === "error") {
-      a.bubble.element.textContent = "";
-      a.bubble.element.style.display = "none";
-    } else if (data.speechBubble) {
-      const raw = data.speechBubble;
-      const text = raw.startsWith("Using: ") ? "... " + raw.slice(7) : raw;
-      a.bubble.element.textContent = text;
+    const bubbleText = formatBubble(data.state, data.speechBubble);
+    if (bubbleText) {
+      a.bubble.element.textContent = bubbleText;
       a.bubble.element.style.display = "";
     } else {
+      a.bubble.element.textContent = "";
       a.bubble.element.style.display = "none";
     }
 
