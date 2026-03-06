@@ -138,6 +138,10 @@ func (b *Bridge) handleEvent(event bus.Event) {
 	case protocol.EventAgentLinkDeleted:
 		b.handleAgentLinkDeleted(event.Payload)
 
+	// ── Agent summoning ─────────────────────────────────────────────────────────
+	case protocol.EventAgentSummoning:
+		b.handleAgentSummoning(event.Payload)
+
 	// ── System ────────────────────────────────────────────────────────────────
 	case protocol.EventShutdown:
 		b.addNotification("system", "", "Shutdown signal received")
@@ -296,6 +300,7 @@ func (b *Bridge) handleDelegationStarted(payload interface{}) {
 		Status:            "running",
 		Mode:              p.Mode,
 		TeamID:            p.TeamID,
+		TeamTaskID:        p.TeamTaskID,
 		StartedAt:         time.Now(),
 	})
 	// Show handshake speech bubbles
@@ -329,6 +334,10 @@ func (b *Bridge) handleDelegationTerminal(payload interface{}, status string) {
 		return
 	}
 	b.state.CompleteDelegation(p.DelegationID, status)
+	// Store error message for failed delegations
+	if status == "failed" && p.Error != "" {
+		b.state.SetDelegationError(p.DelegationID, p.Error)
+	}
 	b.addNotification("delegation", p.TargetAgentKey,
 		fmt.Sprintf("Delegation %s: %s", status, nameOf(p.TargetDisplayName, p.TargetAgentKey)))
 }
@@ -350,6 +359,10 @@ func (b *Bridge) handleDelegationAccumulated(payload interface{}) {
 	var p protocol.DelegationAccumulatedPayload
 	if !unmarshalPayload(payload, &p) {
 		return
+	}
+	// Mark delegation as accumulated so UI can dim the arc
+	if p.DelegationID != "" {
+		b.state.SetDelegationStatus(p.DelegationID, "accumulated")
 	}
 	if p.TargetAgentKey != "" {
 		b.state.SetSpeechBubble(p.TargetAgentKey, "Done — waiting for team...")
@@ -400,18 +413,54 @@ func (b *Bridge) handleTeamTaskEvent(payload interface{}, action string) {
 	if !unmarshalPayload(payload, &p) {
 		return
 	}
-	var msg string
+
+	// Store task in state for UI visualization
 	switch action {
 	case "created":
-		msg = fmt.Sprintf("Task created: %s", truncate(p.Subject, 50))
+		b.state.UpsertTask(OfficeTask{
+			ID:        p.TaskID,
+			TeamID:    p.TeamID,
+			Subject:   p.Subject,
+			Status:    p.Status,
+			Timestamp: time.Now(),
+		})
+		b.addNotification("team", "", fmt.Sprintf("Task created: %s", truncate(p.Subject, 50)))
+
 	case "claimed":
-		msg = fmt.Sprintf("%s claimed: %s", nameOf(p.OwnerDisplayName, p.OwnerAgentKey), truncate(p.Subject, 50))
+		b.state.UpsertTask(OfficeTask{
+			ID:               p.TaskID,
+			TeamID:           p.TeamID,
+			Subject:          p.Subject,
+			Status:           p.Status,
+			OwnerAgentKey:    p.OwnerAgentKey,
+			OwnerDisplayName: p.OwnerDisplayName,
+			Timestamp:        time.Now(),
+		})
+		b.addNotification("team", "", fmt.Sprintf("%s claimed: %s", nameOf(p.OwnerDisplayName, p.OwnerAgentKey), truncate(p.Subject, 50)))
+
 	case "completed":
-		msg = fmt.Sprintf("Task completed: %s", truncate(p.Subject, 50))
+		b.state.UpsertTask(OfficeTask{
+			ID:               p.TaskID,
+			TeamID:           p.TeamID,
+			Subject:          p.Subject,
+			Status:           p.Status,
+			OwnerAgentKey:    p.OwnerAgentKey,
+			OwnerDisplayName: p.OwnerDisplayName,
+			Timestamp:        time.Now(),
+		})
+		b.addNotification("team", "", fmt.Sprintf("Task completed: %s", truncate(p.Subject, 50)))
+
 	case "cancelled":
-		msg = fmt.Sprintf("Task cancelled: %s", truncate(p.Reason, 50))
+		b.state.UpsertTask(OfficeTask{
+			ID:        p.TaskID,
+			TeamID:    p.TeamID,
+			Subject:   p.Subject,
+			Status:    p.Status,
+			Reason:    p.Reason,
+			Timestamp: time.Now(),
+		})
+		b.addNotification("team", "", fmt.Sprintf("Task cancelled: %s", truncate(p.Reason, 50)))
 	}
-	b.addNotification("team", "", msg)
 }
 
 // handleTeamCreated creates a new team platform.
@@ -421,9 +470,10 @@ func (b *Bridge) handleTeamCreated(payload interface{}) {
 		return
 	}
 	b.state.UpsertTeam(OfficeTeam{
-		ID:     p.TeamID,
-		Name:   p.TeamName,
-		LeadID: p.LeadAgentKey,
+		ID:              p.TeamID,
+		Name:            p.TeamName,
+		LeadID:          p.LeadAgentKey,
+		LeadDisplayName: p.LeadDisplayName,
 	})
 	b.addNotification("team", "", fmt.Sprintf("Team created: %s (%d members)", p.TeamName, p.MemberCount))
 }
@@ -502,6 +552,7 @@ func (b *Bridge) handleAgentLinkCreated(payload interface{}) {
 		TargetAgentKey: p.TargetAgentKey,
 		Direction:      p.Direction,
 		Status:         p.Status,
+		TeamID:         p.TeamID,
 	})
 	b.addNotification("agent_link", "",
 		fmt.Sprintf("Link created: %s -> %s [%s]", p.SourceAgentKey, p.TargetAgentKey, p.Direction))
@@ -639,4 +690,20 @@ func nameOf(displayName, key string) string {
 		return displayName
 	}
 	return key
+}
+
+// handleAgentSummoning shows agent spawn animation notification.
+func (b *Bridge) handleAgentSummoning(payload interface{}) {
+	agentKey := extractStringField(payload, "agent_key")
+	displayName := extractStringField(payload, "display_name")
+	if agentKey == "" {
+		return
+	}
+	// Pre-register agent in idle state if not already present
+	b.state.SetAgentState(agentKey, StateIdle, "")
+	if displayName != "" {
+		b.state.SetAgentMeta(agentKey, "", displayName)
+	}
+	b.addNotification("agent", agentKey,
+		fmt.Sprintf("Summoning agent: %s", nameOf(displayName, agentKey)))
 }

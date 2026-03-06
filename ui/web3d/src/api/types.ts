@@ -27,6 +27,7 @@ export interface OfficeTeam {
   id: string;
   name: string;
   leadId: string;
+  leadDisplayName?: string;
   members: string[];
 }
 
@@ -37,10 +38,12 @@ export interface OfficeDelegation {
   sourceDisplayName?: string;
   targetDisplayName?: string;
   task?: string;
-  status: string;
+  status: string; // running/completed/failed/cancelled/accumulated
   mode: string;
   teamId?: string;
+  teamTaskId?: string;
   elapsedMs?: number;
+  error?: string; // error message for failed delegations
   startedAt: string;
 }
 
@@ -50,6 +53,18 @@ export interface OfficeAgentLink {
   targetAgentKey: string;
   direction: string;
   status: string;
+  teamId?: string;
+}
+
+export interface OfficeTask {
+  id: string;
+  teamId: string;
+  subject: string;
+  status: string; // pending/in_progress/completed/cancelled
+  ownerAgentKey?: string;
+  ownerDisplayName?: string;
+  reason?: string; // for cancelled tasks
+  timestamp: string;
 }
 
 export interface GatewayDesk {
@@ -75,6 +90,7 @@ export interface OfficeSnapshot {
   teams: Record<string, OfficeTeam>;
   activeDelegations: OfficeDelegation[];
   agentLinks: OfficeAgentLink[];
+  tasks: Record<string, OfficeTask>;
   notifications: Notification[];
   updatedAt: string;
 }

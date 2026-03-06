@@ -47,10 +47,11 @@ type OfficeAgent struct {
 
 // OfficeTeam represents a team cluster shown as its own platform in the 3D scene.
 type OfficeTeam struct {
-	ID      string   `json:"id"`
-	Name    string   `json:"name"`
-	LeadID  string   `json:"leadId"`
-	Members []string `json:"members"` // agent IDs
+	ID              string   `json:"id"`
+	Name            string   `json:"name"`
+	LeadID          string   `json:"leadId"`
+	LeadDisplayName string   `json:"leadDisplayName,omitempty"`
+	Members         []string `json:"members"` // agent IDs
 }
 
 // OfficeDelegation tracks an active delegation arc between two agents.
@@ -61,10 +62,12 @@ type OfficeDelegation struct {
 	SourceDisplayName string    `json:"sourceDisplayName,omitempty"`
 	TargetDisplayName string    `json:"targetDisplayName,omitempty"`
 	Task              string    `json:"task,omitempty"`    // delegation task description
-	Status            string    `json:"status"`            // running/completed/failed/cancelled
+	Status            string    `json:"status"`            // running/completed/failed/cancelled/accumulated
 	Mode              string    `json:"mode"`              // sync/async/handoff
 	TeamID            string    `json:"teamId,omitempty"`
+	TeamTaskID        string    `json:"teamTaskId,omitempty"`
 	ElapsedMS         int       `json:"elapsedMs,omitempty"` // updated by progress events
+	Error             string    `json:"error,omitempty"`     // error message for failed delegations
 	StartedAt         time.Time `json:"startedAt"`
 }
 
@@ -75,6 +78,19 @@ type OfficeAgentLink struct {
 	TargetAgentKey string `json:"targetAgentKey"`
 	Direction      string `json:"direction"` // outbound/inbound/bidirectional
 	Status         string `json:"status"`    // active/inactive
+	TeamID         string `json:"teamId,omitempty"`
+}
+
+// OfficeTask represents a team task in the task board.
+type OfficeTask struct {
+	ID               string    `json:"id"`
+	TeamID           string    `json:"teamId"`
+	Subject          string    `json:"subject"`
+	Status           string    `json:"status"` // pending/in_progress/completed/cancelled
+	OwnerAgentKey    string    `json:"ownerAgentKey,omitempty"`
+	OwnerDisplayName string    `json:"ownerDisplayName,omitempty"`
+	Reason           string    `json:"reason,omitempty"` // for cancelled tasks
+	Timestamp        time.Time `json:"timestamp"`
 }
 
 // GatewayDesk represents the central gateway status panel.
@@ -106,6 +122,7 @@ type OfficeState struct {
 	Teams             map[string]*OfficeTeam   `json:"teams,omitempty"`
 	ActiveDelegations []OfficeDelegation       `json:"activeDelegations,omitempty"`
 	AgentLinks        []OfficeAgentLink        `json:"agentLinks,omitempty"`
+	Tasks             map[string]*OfficeTask   `json:"tasks,omitempty"`
 
 	mu        sync.RWMutex
 	maxNotifs int
@@ -118,6 +135,7 @@ func NewOfficeState() *OfficeState {
 	return &OfficeState{
 		Agents:    make(map[string]*OfficeAgent),
 		Teams:     make(map[string]*OfficeTeam),
+		Tasks:     make(map[string]*OfficeTask),
 		maxNotifs: defaultMaxNotifications,
 		Gateway: GatewayDesk{
 			Healthy:   true,
@@ -178,6 +196,13 @@ func (s *OfficeState) Snapshot() OfficeState {
 	links := make([]OfficeAgentLink, len(s.AgentLinks))
 	copy(links, s.AgentLinks)
 
+	// Deep-copy tasks map.
+	tasks := make(map[string]*OfficeTask, len(s.Tasks))
+	for k, v := range s.Tasks {
+		t := *v
+		tasks[k] = &t
+	}
+
 	// Return a fresh struct literal — does NOT copy the live mutex.
 	return OfficeState{
 		Gateway:           gw,
@@ -186,6 +211,7 @@ func (s *OfficeState) Snapshot() OfficeState {
 		Teams:             teams,
 		ActiveDelegations: delegations,
 		AgentLinks:        links,
+		Tasks:             tasks,
 		UpdatedAt:         s.UpdatedAt,
 	}
 }
@@ -393,6 +419,48 @@ func (s *OfficeState) RemoveAgentLink(id string) {
 			s.AgentLinks = append(s.AgentLinks[:i], s.AgentLinks[i+1:]...)
 			s.UpdatedAt = time.Now()
 			return
+		}
+	}
+}
+
+// UpsertTask adds or updates a task in the state.
+func (s *OfficeState) UpsertTask(task OfficeTask) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t := task
+	s.Tasks[task.ID] = &t
+	s.UpdatedAt = time.Now()
+}
+
+// RemoveTask removes a task by ID.
+func (s *OfficeState) RemoveTask(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.Tasks, id)
+	s.UpdatedAt = time.Now()
+}
+
+// SetDelegationStatus updates the status of an active delegation.
+func (s *OfficeState) SetDelegationStatus(id, status string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.ActiveDelegations {
+		if s.ActiveDelegations[i].ID == id {
+			s.ActiveDelegations[i].Status = status
+			break
+		}
+	}
+	s.UpdatedAt = time.Now()
+}
+
+// SetDelegationError sets the error message for a failed delegation.
+func (s *OfficeState) SetDelegationError(id, errMsg string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.ActiveDelegations {
+		if s.ActiveDelegations[i].ID == id {
+			s.ActiveDelegations[i].Error = errMsg
+			break
 		}
 	}
 }
