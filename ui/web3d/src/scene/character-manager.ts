@@ -330,7 +330,7 @@ export class CharacterManager {
       if (a.mixer) {
         a.mixer.update(delta);
 
-        if (a.animMesh) {
+        if (a.animMesh && a.animState !== "idle") {
           if (a.talkingWith) {
             const other = this.map.get(a.talkingWith);
             if (other) {

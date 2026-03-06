@@ -474,6 +474,7 @@ func (b *Bridge) handleTeamCreated(payload interface{}) {
 		Name:            p.TeamName,
 		LeadID:          p.LeadAgentKey,
 		LeadDisplayName: p.LeadDisplayName,
+		Members:         p.MemberKeys,
 	})
 	b.addNotification("team", "", fmt.Sprintf("Team created: %s (%d members)", p.TeamName, p.MemberCount))
 }

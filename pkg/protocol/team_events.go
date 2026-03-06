@@ -135,11 +135,12 @@ type TeamMessageEventPayload struct {
 
 // TeamCreatedPayload is emitted when a new team is created via RPC.
 type TeamCreatedPayload struct {
-	TeamID          string `json:"team_id"`
-	TeamName        string `json:"team_name"`
-	LeadAgentKey    string `json:"lead_agent_key"`
-	LeadDisplayName string `json:"lead_display_name,omitempty"`
-	MemberCount     int    `json:"member_count"`
+	TeamID          string   `json:"team_id"`
+	TeamName        string   `json:"team_name"`
+	LeadAgentKey    string   `json:"lead_agent_key"`
+	LeadDisplayName string   `json:"lead_display_name,omitempty"`
+	MemberCount     int      `json:"member_count"`
+	MemberKeys      []string `json:"member_keys,omitempty"` // agent keys of all members (excl. lead)
 }
 
 // TeamUpdatedPayload is emitted when team settings are updated via RPC.

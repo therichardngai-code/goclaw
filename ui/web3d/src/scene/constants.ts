@@ -79,15 +79,6 @@ export const ANIM_GLB: Array<{
   { idle: "anim-gamer-idle", walking: "anim-gamer-walking", talking: null },
 ];
 
-// Machine decorations
-export const MACHINE_DEFS = [
-  { file: "vending-machine", colorTheme: "arcade" },
-  { file: "arcade-machine", colorTheme: "arcade" },
-  { file: "prizes", colorTheme: "arcade" },
-  { file: "ticket-machine", colorTheme: "arcade" },
-  { file: "freezers-standing", colorTheme: "market" },
-];
-
 // Movement constants
 export const WALK_SPEED = 0.35;
 export const WANDER_RANGE = 0.45;

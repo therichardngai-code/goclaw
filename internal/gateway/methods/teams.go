@@ -170,6 +170,12 @@ func (m *TeamsMethods) handleCreate(_ context.Context, client *gateway.Client, r
 
 	// Emit team.created event
 	if m.msgBus != nil {
+		memberKeys := make([]string, 0, len(memberAgents))
+		for _, ag := range memberAgents {
+			if ag.ID != leadAgent.ID {
+				memberKeys = append(memberKeys, ag.AgentKey)
+			}
+		}
 		m.msgBus.Broadcast(bus.Event{
 			Name: protocol.EventTeamCreated,
 			Payload: protocol.TeamCreatedPayload{
@@ -178,6 +184,7 @@ func (m *TeamsMethods) handleCreate(_ context.Context, client *gateway.Client, r
 				LeadAgentKey:    leadAgent.AgentKey,
 				LeadDisplayName: leadAgent.DisplayName,
 				MemberCount:     len(memberAgents) + 1,
+				MemberKeys:      memberKeys,
 			},
 		})
 	}
