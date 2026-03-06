@@ -72,6 +72,28 @@ export async function createAgent(
   }
 }
 
+// Minimal agent record returned by GET /v1/agents
+export interface AgentRecord {
+  id: string;
+  agent_key: string;
+  display_name?: string;
+  provider: string;
+  model: string;
+  agent_type: string;
+  status: string;
+}
+
+export async function fetchAllAgents(): Promise<AgentRecord[]> {
+  try {
+    const res = await fetch("/v1/agents", { headers: getHeaders() });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.agents ?? []).filter((a: AgentRecord) => a.status === "active" || a.status === "summoning");
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchChannelInstances(): Promise<ChannelInstance[]> {
   try {
     const res = await fetch("/v1/channels/instances", { headers: getHeaders() });

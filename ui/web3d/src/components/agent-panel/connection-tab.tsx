@@ -4,7 +4,7 @@ import { CharacterPreview } from "./character-preview";
 import { stateHex, hex6, cap } from "@/scene/utils";
 
 export function ConnectionTab() {
-  const snapshot = useOfficeStore((s) => s.snapshot);
+  const snapshot = useOfficeStore((s) => s.mergedSnapshot);
   const agents = snapshot ? Object.values(snapshot.agents) : [];
   const [idx, setIdx] = useState(0);
 

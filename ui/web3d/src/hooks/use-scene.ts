@@ -7,7 +7,7 @@ let globalScene: OfficeScene | null = null;
 
 export function useScene(containerRef: RefObject<HTMLDivElement | null>): void {
   const sceneRef = useRef<OfficeScene | null>(null);
-  const snapshot = useOfficeStore((s) => s.snapshot);
+  const mergedSnapshot = useOfficeStore((s) => s.mergedSnapshot);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -25,10 +25,10 @@ export function useScene(containerRef: RefObject<HTMLDivElement | null>): void {
   }, [containerRef]);
 
   useEffect(() => {
-    if (snapshot && sceneRef.current) {
-      sceneRef.current.update(snapshot);
+    if (mergedSnapshot && sceneRef.current) {
+      sceneRef.current.update(mergedSnapshot);
     }
-  }, [snapshot]);
+  }, [mergedSnapshot]);
 }
 
 // Camera control functions for external use

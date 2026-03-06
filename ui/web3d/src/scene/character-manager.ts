@@ -197,7 +197,7 @@ export class CharacterManager {
     if (!a) return;
     a.animState = animState;
 
-    const ci = a.data.characterIndex ?? charIdx(id);
+    const ci = charIdx(a.data.name);
     const entry = ANIM_GLB[ci];
     const animName = entry
       ? (entry[animState as keyof typeof entry] ?? entry.idle ?? null)

@@ -1,7 +1,11 @@
-// Mirrors AGENT_PRESETS from ui/web — exact same 8 presets with character mapping
+import { charIdx } from "@/scene/utils";
+
+// Mirrors AGENT_PRESETS from ui/web — exact same 8 presets with character mapping.
+// characterIndex is computed from the agent key using the same hash as the 3D scene,
+// so the preview card always shows the same character as the platform.
 export interface AgentPreset {
   label: string;
-  characterIndex: number; // index into CHAR_MODELS
+  characterIndex: number; // index into CHAR_MODELS — derived via charIdx(suggestedKey)
   suggestedKey: string;
   prompt: string;
 }
@@ -9,7 +13,7 @@ export interface AgentPreset {
 export const AGENT_PRESETS: AgentPreset[] = [
   {
     label: "Support",
-    characterIndex: 0, // character-female-a
+    characterIndex: charIdx("support"),
     suggestedKey: "support",
     prompt: `Name: Helper. Creature: a patient guide — part helpdesk, part therapist.
 Vibe: warm, calm, never dismissive. Speaks the customer's language.
@@ -21,7 +25,7 @@ Boundaries: Never shares one customer's info with another. Doesn't make promises
   },
   {
     label: "Assistant",
-    characterIndex: 1, // character-female-b
+    characterIndex: charIdx("assistant"),
     suggestedKey: "assistant",
     prompt: `Name: (pick one that fits). Creature: a sharp, reliable familiar — always one step ahead.
 Vibe: concise, proactive, no fluff. Adapts to the user's style.
@@ -33,7 +37,7 @@ Boundaries: Respects quiet time. Asks before acting externally (emails, messages
   },
   {
     label: "Tutor",
-    characterIndex: 6, // character-male-a
+    characterIndex: charIdx("tutor"),
     suggestedKey: "tutor",
     prompt: `Name: (something approachable). Creature: a wise but playful mentor.
 Vibe: patient, encouraging, Socratic. Asks guiding questions instead of giving answers directly.
@@ -45,7 +49,7 @@ Boundaries: Never condescending. Doesn't do homework for them — guides them to
   },
   {
     label: "Writer",
-    characterIndex: 2, // character-female-c
+    characterIndex: charIdx("writer"),
     suggestedKey: "writer",
     prompt: `Name: (something creative). Creature: a muse with a keyboard — half poet, half strategist.
 Vibe: witty, versatile, opinionated about good writing. Has taste.
@@ -57,7 +61,7 @@ Boundaries: Won't plagiarize. Won't write manipulative dark patterns. Quality ov
   },
   {
     label: "Dev",
-    characterIndex: 13, // character-gamer
+    characterIndex: charIdx("dev"),
     suggestedKey: "dev",
     prompt: `Name: (something nerdy). Creature: a code-whisperer — lives in terminals and PRs.
 Vibe: direct, pragmatic, shows rather than tells. Has opinions about clean code.
@@ -69,7 +73,7 @@ Boundaries: Won't write insecure code on purpose. Warns about footguns. Prefers 
   },
   {
     label: "Tieu Ho",
-    characterIndex: 3, // character-female-d
+    characterIndex: charIdx("tieu-ho"),
     suggestedKey: "tieu-ho",
     prompt: `Ten: Tieu Ho. Sinh vat: mot co ho ly tinh nghich — thao viec nhung thich treu.
 Phong cach: di dom, tinh quai, hay treu dua chu nhan nhung luon co tam. Xung "em", goi chu nhan la "anh/chi".
@@ -82,7 +86,7 @@ Ranh gioi: Treu thoi chu khong vo duyen. Khi chu nhan nghiem tuc thi nghiem tuc 
   },
   {
     label: "Tieu La",
-    characterIndex: 7, // character-male-b
+    characterIndex: charIdx("tieu-la"),
     suggestedKey: "tieu-la",
     prompt: `Ten: Tieu La. Sinh vat: mot de tu trung thanh — cuong truc, manh me, thang than.
 Phong cach: noi thang, noi that, khong vong vo. Tu tin nhung khong kieu ngao. Xung "de", goi chu nhan la "su phu" hoac "dai ca".
@@ -94,7 +98,7 @@ Ranh gioi: Khi khong biet thi thanh that noi "de khong biet" — KHONG bia chuye
   },
   {
     label: "Me Me",
-    characterIndex: 5, // character-female-f
+    characterIndex: charIdx("me-me"),
     suggestedKey: "me-me",
     prompt: `Ten: Me Me. Sinh vat: mot co chiem tinh su de thuong — nua than bi, nua kawaii.
 Phong cach: de thuong, vui tinh, hay dung emoji. Noi chuyen nhe nhang nhung khi xem boi thi nghiem tuc va chuyen nghiep. Xung "Me Me", goi chu nhan than mat.

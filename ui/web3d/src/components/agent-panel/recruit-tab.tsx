@@ -12,7 +12,7 @@ interface Props {
 }
 
 export function RecruitTab({ onSuccess }: Props) {
-  const snapshot = useOfficeStore((s) => s.snapshot);
+  const snapshot = useOfficeStore((s) => s.mergedSnapshot);
   const isStandalone = snapshot?.gateway.mode === "standalone";
   const [subTab, setSubTab] = useState<"predefined" | "open">("predefined");
   const [selected, setSelected] = useState<AgentPreset | null>(null);
