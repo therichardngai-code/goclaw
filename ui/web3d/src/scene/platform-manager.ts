@@ -3,6 +3,7 @@ import { CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
 import { ASSET_BASE, CHAN_COLOR } from "./constants";
 import { cap, hex6 } from "./utils";
+import { HOME_SLOT_Y, DEFAULT_SLOT_Y } from "./constants";
 import type { AssetLoader } from "./asset-loader";
 import type { CameraController } from "./camera-controller";
 
@@ -187,11 +188,12 @@ export class PlatformManager {
     const col = slot % perRow;
     const row = Math.floor(slot / perRow);
     const rows = Math.ceil(total / perRow);
+    const baseY = key === "idle" ? HOME_SLOT_Y : DEFAULT_SLOT_Y;
 
     return p.group.position.clone().add(
       new THREE.Vector3(
         (col - (perRow - 1) / 2) * 1.3,
-        0.15,
+        baseY,
         row * 1.3 - (rows - 1) * 0.65
       )
     );

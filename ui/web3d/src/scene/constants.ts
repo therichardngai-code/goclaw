@@ -79,6 +79,10 @@ export const ANIM_GLB: Array<{
   { idle: "anim-gamer-idle", walking: "anim-gamer-walking", talking: null },
 ];
 
+// Platform slot Y offsets — space-station has 2 elevated stone layers
+export const HOME_SLOT_Y = 1.8;  // upper deck of space-station
+export const DEFAULT_SLOT_Y = 0.15;
+
 // Movement constants
 export const WALK_SPEED = 0.35;
 export const WANDER_RANGE = 0.45;
