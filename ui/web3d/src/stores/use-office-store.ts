@@ -8,6 +8,7 @@ interface OfficeStore {
   snapshot: OfficeSnapshot | null;
   localNotifications: Notification[];
   notificationPanelOpen: boolean;
+  agentPanelOpen: boolean;
 
   setToken: (t: string) => void;
   setConnected: (c: boolean) => void;
@@ -15,6 +16,7 @@ interface OfficeStore {
   addLocalNotification: (n: Notification) => void;
   clearLocalNotifications: () => void;
   toggleNotificationPanel: () => void;
+  toggleAgentPanel: () => void;
 }
 
 const MAX_LOCAL_NOTIFICATIONS = 50;
@@ -25,6 +27,7 @@ export const useOfficeStore = create<OfficeStore>((set) => ({
   snapshot: null,
   localNotifications: [],
   notificationPanelOpen: false,
+  agentPanelOpen: false,
 
   setToken: (token) => {
     localStorage.setItem(LOCAL_STORAGE_TOKEN_KEY, token);
@@ -42,4 +45,6 @@ export const useOfficeStore = create<OfficeStore>((set) => ({
   clearLocalNotifications: () => set({ localNotifications: [] }),
   toggleNotificationPanel: () =>
     set((state) => ({ notificationPanelOpen: !state.notificationPanelOpen })),
+  toggleAgentPanel: () =>
+    set((state) => ({ agentPanelOpen: !state.agentPanelOpen })),
 }));

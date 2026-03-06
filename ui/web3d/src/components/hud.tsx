@@ -3,6 +3,7 @@ import { useOfficeStore } from "@/stores/use-office-store";
 export function HUD() {
   const connected = useOfficeStore((s) => s.connected);
   const snapshot = useOfficeStore((s) => s.snapshot);
+  const toggleAgentPanel = useOfficeStore((s) => s.toggleAgentPanel);
 
   const agentCount = snapshot ? Object.keys(snapshot.agents).length : 0;
   const version = snapshot?.gateway.version ?? "-";
@@ -20,9 +21,12 @@ export function HUD() {
           {connected ? "LIVE" : "OFFLINE"}
         </span>
       </div>
-      <div className="bg-black/50 px-3 py-1.5 rounded text-white/60">
+      <button
+        onClick={toggleAgentPanel}
+        className="bg-black/50 px-3 py-1.5 rounded text-white/60 hover:text-white hover:bg-black/70 transition-colors"
+      >
         {agentCount} agents
-      </div>
+      </button>
       <div className="bg-black/50 px-3 py-1.5 rounded text-white/60">
         v{version}
       </div>

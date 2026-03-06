@@ -119,7 +119,7 @@ export class DelegationArcManager {
     targetId: string,
     charMgr: CharacterManager
   ): void {
-    const color = mode === "async" ? 0xffd700 : 0x00ddff;
+    const color = mode === "async" ? 0xc084fc : 0xa855f7;
     const age = Date.now() - startedMs;
     const handshaking = age < HANDSHAKE_MS;
 

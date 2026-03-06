@@ -7,6 +7,7 @@ import { HUD } from "./components/hud";
 import { ReconnectBanner } from "./components/reconnect-banner";
 import { NotificationPanel } from "./components/notification-panel";
 import { CameraControls } from "./components/camera-controls";
+import { AgentPanel } from "./components/agent-panel/agent-panel";
 
 export function App() {
   const token = useOfficeStore((s) => s.token);
@@ -25,6 +26,7 @@ export function App() {
       <HUD />
       <ReconnectBanner />
       <NotificationPanel />
+      <AgentPanel />
       <CameraControls />
     </>
   );
