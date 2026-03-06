@@ -207,8 +207,8 @@ export class PlatformManager {
   private addRoom(
     g: THREE.Group,
     color: number,
-    W: number,
-    D: number,
+    _W: number,
+    _D: number,
     theme: "arcade" | "market"
   ): void {
     const src = this.roomGLBs[theme];
@@ -216,15 +216,9 @@ export class PlatformManager {
 
     const mesh = SkeletonUtils.clone(src);
 
-    // Scale to fit platform W x D, sit on y=0
+    // Native scale (100%) — sit on y=0
     const box = new THREE.Box3().setFromObject(mesh);
-    const sz = new THREE.Vector3();
-    box.getSize(sz);
-    if (sz.x > 0.01 && sz.z > 0.01) {
-      const s = Math.min(W / sz.x, D / sz.z);
-      mesh.scale.setScalar(s);
-      mesh.position.y = -box.min.y * s;
-    }
+    mesh.position.y = -box.min.y;
 
     // Subtle zone color tint
     mesh.traverse((child) => {
