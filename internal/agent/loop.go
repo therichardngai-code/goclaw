@@ -725,22 +725,6 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 			continue // one more LLM call for summarization, then loop exits (no tool calls)
 		}
 
-		// Skill evolution: periodic nudge at tool count milestones.
-		// Reminds agent to capture reusable patterns before the session ends.
-		if l.skillEvolve && l.skillNudgeInterval > 0 &&
-			totalToolCalls > 0 && totalToolCalls%l.skillNudgeInterval == 0 {
-			messages = append(messages, providers.Message{
-				Role: "user",
-				Content: fmt.Sprintf(
-					"[Skills] You have made %d tool calls. If you have discovered a "+
-						"reusable process or pattern in this work, consider capturing it with "+
-						"`skill_manage(action=\"create\")` before finishing. Good skills are concise, "+
-						"general, and include concrete examples.",
-					totalToolCalls,
-				),
-			})
-		}
-
 		// Emit activity event: tool execution phase
 		if len(resp.ToolCalls) > 0 {
 			toolNames := make([]string, len(resp.ToolCalls))
@@ -1023,6 +1007,7 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 			messages = append(messages, forLLM...)
 			pendingMsgs = append(pendingMsgs, forSession...)
 		}
+
 	}
 
 	// 4. Full sanitization pipeline (matching TS extractAssistantText + sanitizeUserFacingText)
@@ -1036,6 +1021,17 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 	// Matching TS: NO_REPLY is saved (via resolveSilentReplyFallbackText) but
 	// filtered at the payload level before delivery.
 	isSilent := IsSilentReply(finalContent)
+
+	// 5b. Skill evolution: postscript suggestion after complex tasks.
+	// Fires when skill_evolve=true AND the run involved enough tool calls to warrant a skill.
+	// Appended to the agent's own final response so the user sees it inline and can explicitly
+	// consent ("save as skill") before anything is created. No mid-loop injection, no async
+	// goroutine, no session contamination — the next user turn naturally triggers skill creation.
+	if l.skillEvolve && l.skillNudgeInterval > 0 &&
+		totalToolCalls >= l.skillNudgeInterval &&
+		finalContent != "" && !isSilent {
+		finalContent += "\n\n---\n_💡 This task involved several steps. Want me to save the process as a reusable skill? Reply **\"save as skill\"** or **\"skip\"**._"
+	}
 
 	// 6. Fallback for empty content
 	if finalContent == "" {
