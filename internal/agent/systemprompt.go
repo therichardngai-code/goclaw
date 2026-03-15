@@ -38,6 +38,7 @@ type SystemPromptConfig struct {
 	AgentType     string                 // "open" or "predefined" — affects context file framing
 
 	HasSkillSearch     bool              // skill_search tool registered? (for search-mode prompt)
+	HasSkillManage     bool              // skill_manage tool registered + skill_evolve enabled for this agent
 	HasMCPToolSearch   bool              // mcp_tool_search tool registered? (MCP search mode)
 	HasKnowledgeGraph  bool              // knowledge_graph_search tool registered?
 	MCPToolDescs       map[string]string // MCP tool name → description (inline mode only)
@@ -69,6 +70,7 @@ var coreToolSummaries = map[string]string{
 	"web_fetch":     "Fetch and extract content from a URL",
 	"cron":          "Manage scheduled jobs and reminders",
 	"skill_search":     "Search available skills by keyword (weather, translate, github, etc.)",
+	"skill_manage":     "Create, patch, or delete skills from agent experience (learning loop)",
 	"use_skill":        "Invoke a skill by name and follow its instructions",
 	"mcp_tool_search":  "Search for available MCP external integration tools by keyword",
 	"browser":          "Browse web pages interactively",
@@ -175,8 +177,8 @@ func BuildSystemPrompt(cfg SystemPromptConfig) string {
 	// 4. ## Skills (full only)
 	// SkillsSummary non-empty → inline mode (XML list in prompt, TS-style)
 	// SkillsSummary empty + HasSkillSearch → search mode (use skill_search tool)
-	if !isMinimal && (cfg.SkillsSummary != "" || cfg.HasSkillSearch) {
-		lines = append(lines, buildSkillsSection(cfg.SkillsSummary, cfg.HasSkillSearch)...)
+	if !isMinimal && (cfg.SkillsSummary != "" || cfg.HasSkillSearch || cfg.HasSkillManage) {
+		lines = append(lines, buildSkillsSection(cfg.SkillsSummary, cfg.HasSkillSearch, cfg.HasSkillManage)...)
 	}
 
 	// 4.5. ## MCP Tools (full only)
@@ -350,11 +352,13 @@ func buildSelfEvolveSection() []string {
 	}
 }
 
-func buildSkillsSection(skillsSummary string, hasSkillSearch bool) []string {
+func buildSkillsSection(skillsSummary string, hasSkillSearch, hasSkillManage bool) []string {
+	var lines []string
+
 	if skillsSummary != "" {
 		// Inline mode: skills XML is in the prompt (like TS).
 		// Agent scans <available_skills> descriptions directly.
-		return []string{
+		lines = append(lines,
 			"## Skills (mandatory)",
 			"",
 			"Before replying, scan `<available_skills>` below.",
@@ -364,12 +368,10 @@ func buildSkillsSection(skillsSummary string, hasSkillSearch bool) []string {
 			"",
 			skillsSummary,
 			"",
-		}
-	}
-
-	if hasSkillSearch {
+		)
+	} else if hasSkillSearch {
 		// Search mode: too many skills to inline, agent uses skill_search tool.
-		return []string{
+		lines = append(lines,
 			"## Skills (mandatory)",
 			"",
 			"Before replying, check if a skill applies:",
@@ -383,10 +385,28 @@ func buildSkillsSection(skillsSummary string, hasSkillSearch bool) []string {
 			"- Prefer `skill_search` over `browser` or `web_search` when the domain might have a skill.",
 			"- If skill_search returns no results, fall back to other tools freely.",
 			"",
-		}
+		)
 	}
 
-	return nil
+	// Skill creation guidance: shown when skill_evolve=true and skill_manage is registered.
+	if hasSkillManage {
+		lines = append(lines,
+			"### Skill Creation (mandatory at task end)",
+			"",
+			"After completing any complex task (5+ tool calls), ask yourself:",
+			"\"Would this process be useful again in the future?\"",
+			"",
+			"If yes: capture it with `skill_manage(action=\"create\", content=\"...\")`. Good skills:",
+			"- Are self-contained (one purpose, clear instructions)",
+			"- Include the exact commands or steps to execute",
+			"- Have a concise YAML frontmatter: `name`, `description`, `slug`",
+			"",
+			"To improve an existing skill: `skill_manage(action=\"patch\", slug=\"...\", find=\"...\", replace=\"...\")`",
+			"",
+		)
+	}
+
+	return lines
 }
 
 func buildWorkspaceSection(workspace string, sandboxEnabled bool, containerDir string) []string {

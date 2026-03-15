@@ -403,6 +403,9 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 	var teamTaskSpawns int   // count of spawn calls with team_task_id
 	var teamTaskRetried bool // only retry once to prevent infinite loops
 
+	// Skill evolution: budget pressure nudge state (sent at most once each per run).
+	var skillNudge70Sent, skillNudge90Sent bool
+
 	// Inject retry hook so channels can update placeholder on LLM retries.
 	ctx = providers.WithRetryHook(ctx, func(attempt, maxAttempts int, err error) {
 		emitRun(AgentEvent{
@@ -439,6 +442,28 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 		iteration++
 
 		slog.Debug("agent iteration", "agent", l.id, "iteration", iteration, "messages", len(messages))
+
+		// Skill evolution: budget pressure nudges at 70% and 90% of iteration budget.
+		// More urgent than the interval nudge — agent is approaching the end of its runway.
+		if l.skillEvolve && maxIter > 0 {
+			iterPct := float64(iteration) / float64(maxIter)
+			if iterPct >= 0.90 && !skillNudge90Sent {
+				skillNudge90Sent = true
+				messages = append(messages, providers.Message{
+					Role: "user",
+					Content: "[Skills] You are at 90% of your iteration budget. If you have done " +
+						"complex or reusable work this session, capture it NOW with " +
+						"`skill_manage(action=\"create\")` before you run out of turns.",
+				})
+			} else if iterPct >= 0.70 && !skillNudge70Sent {
+				skillNudge70Sent = true
+				messages = append(messages, providers.Message{
+					Role: "user",
+					Content: "[Skills] You are at 70% of your iteration budget. Consider whether " +
+						"any patterns from this session would make a good skill.",
+				})
+			}
+		}
 
 		// Emit activity event: thinking phase
 		emitRun(AgentEvent{
@@ -698,6 +723,22 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 				Content: fmt.Sprintf("[System] Tool call budget reached (%d/%d). Do NOT call any more tools. Summarize results so far and respond to the user.", totalToolCalls, l.maxToolCalls),
 			})
 			continue // one more LLM call for summarization, then loop exits (no tool calls)
+		}
+
+		// Skill evolution: periodic nudge at tool count milestones.
+		// Reminds agent to capture reusable patterns before the session ends.
+		if l.skillEvolve && l.skillNudgeInterval > 0 &&
+			totalToolCalls > 0 && totalToolCalls%l.skillNudgeInterval == 0 {
+			messages = append(messages, providers.Message{
+				Role: "user",
+				Content: fmt.Sprintf(
+					"[Skills] You have made %d tool calls. If you have discovered a "+
+						"reusable process or pattern in this work, consider capturing it with "+
+						"`skill_manage(action=\"create\")` before finishing. Good skills are concise, "+
+						"general, and include concrete examples.",
+					totalToolCalls,
+				),
+			})
 		}
 
 		// Emit activity event: tool execution phase

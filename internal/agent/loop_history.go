@@ -139,6 +139,7 @@ func (l *Loop) buildMessages(ctx context.Context, history []providers.Message, s
 		HasSpawn:               l.tools != nil && hasSpawn,
 		HasTeam:                hasTeamTools,
 		HasSkillSearch:         hasSkillSearch,
+		HasSkillManage:         l.skillEvolve && l.tools != nil && func() bool { _, ok := l.tools.Get("skill_manage"); return ok }(),
 		HasMCPToolSearch:       hasMCPToolSearch,
 		HasKnowledgeGraph:      hasKG,
 		MCPToolDescs:           mcpToolDescs,
