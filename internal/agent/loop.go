@@ -16,6 +16,7 @@ import (
 
 	"github.com/nextlevelbuilder/goclaw/internal/bootstrap"
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
+	"github.com/nextlevelbuilder/goclaw/internal/i18n"
 	"github.com/nextlevelbuilder/goclaw/internal/config"
 	"github.com/nextlevelbuilder/goclaw/internal/providers"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
@@ -432,6 +433,7 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 
 	// Skill evolution: budget pressure nudge state (sent at most once each per run).
 	var skillNudge70Sent, skillNudge90Sent bool
+	var skillPostscriptSent bool
 
 	// Inject retry hook so channels can update placeholder on LLM retries.
 	ctx = providers.WithRetryHook(ctx, func(attempt, maxAttempts int, err error) {
@@ -471,23 +473,21 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 		slog.Debug("agent iteration", "agent", l.id, "iteration", iteration, "messages", len(messages))
 
 		// Skill evolution: budget pressure nudges at 70% and 90% of iteration budget.
-		// More urgent than the interval nudge — agent is approaching the end of its runway.
+		// Ephemeral (in-memory only, not persisted to session) — LLM sees them during this run only.
 		if l.skillEvolve && maxIter > 0 {
+			locale := store.LocaleFromContext(ctx)
 			iterPct := float64(iteration) / float64(maxIter)
 			if iterPct >= 0.90 && !skillNudge90Sent {
 				skillNudge90Sent = true
 				messages = append(messages, providers.Message{
-					Role: "user",
-					Content: "[Skills] You are at 90% of your iteration budget. If you have done " +
-						"complex or reusable work this session, capture it NOW with " +
-						"`skill_manage(action=\"create\")` before you run out of turns.",
+					Role:    "user",
+					Content: i18n.T(locale, i18n.MsgSkillNudge90Pct),
 				})
 			} else if iterPct >= 0.70 && !skillNudge70Sent {
 				skillNudge70Sent = true
 				messages = append(messages, providers.Message{
-					Role: "user",
-					Content: "[Skills] You are at 70% of your iteration budget. Consider whether " +
-						"any patterns from this session would make a good skill.",
+					Role:    "user",
+					Content: i18n.T(locale, i18n.MsgSkillNudge70Pct),
 				})
 			}
 		}
@@ -1043,8 +1043,10 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 	// goroutine, no session contamination — the next user turn naturally triggers skill creation.
 	if l.skillEvolve && l.skillNudgeInterval > 0 &&
 		totalToolCalls >= l.skillNudgeInterval &&
-		finalContent != "" && !isSilent {
-		finalContent += "\n\n---\n_💡 This task involved several steps. Want me to save the process as a reusable skill? Reply **\"save as skill\"** or **\"skip\"**._"
+		finalContent != "" && !isSilent && !skillPostscriptSent {
+		skillPostscriptSent = true
+		locale := store.LocaleFromContext(ctx)
+		finalContent += "\n\n---\n_" + i18n.T(locale, i18n.MsgSkillNudgePostscript) + "_"
 	}
 
 	// 6. Fallback for empty content

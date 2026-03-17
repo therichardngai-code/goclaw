@@ -76,6 +76,7 @@ func (l *Loop) buildMessages(ctx context.Context, history []providers.Message, s
 	_, hasSpawn := l.tools.Get("spawn")
 	_, hasTeamTools := l.tools.Get("team_tasks")
 	_, hasSkillSearch := l.tools.Get("skill_search")
+	_, hasSkillManage := l.tools.Get("skill_manage")
 	_, hasMCPToolSearch := l.tools.Get("mcp_tool_search")
 	_, hasKG := l.tools.Get("knowledge_graph_search")
 
@@ -161,7 +162,7 @@ func (l *Loop) buildMessages(ctx context.Context, history []providers.Message, s
 		HasTeam:                hasTeamTools,
 		TeamWorkspace:          tools.ToolTeamWorkspaceFromCtx(ctx),
 		HasSkillSearch:         hasSkillSearch,
-		HasSkillManage:         l.skillEvolve && l.tools != nil && func() bool { _, ok := l.tools.Get("skill_manage"); return ok }(),
+		HasSkillManage:         l.skillEvolve && hasSkillManage,
 		HasMCPToolSearch:       hasMCPToolSearch,
 		HasKnowledgeGraph:      hasKG,
 		MCPToolDescs:           mcpToolDescs,

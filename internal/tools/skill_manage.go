@@ -34,11 +34,11 @@ func NewSkillManageTool(skills *pg.PGSkillStore, baseDir string, loader *skills.
 func (t *SkillManageTool) Name() string { return "skill_manage" }
 
 func (t *SkillManageTool) Description() string {
-	return "Create, patch, or delete agent skills. " +
-		"action=create: write a new skill from SKILL.md content (simpler than publish_skill — no directory required). " +
-		"action=patch: surgically update an existing skill via find/replace (creates new version, history immutable). " +
+	return "Create, patch, or delete your own skills from content strings. " +
+		"action=create: write a new skill from SKILL.md content (content string, no directory needed). " +
+		"action=patch: update an existing skill via find/replace (creates new immutable version). " +
 		"action=delete: archive a skill so it is no longer discoverable. " +
-		"All actions run a security scanner — dangerous shell commands, path traversal, and credential patterns are rejected."
+		"Security scanner rejects dangerous patterns. You can only manage skills you own."
 }
 
 func (t *SkillManageTool) Parameters() map[string]any {
@@ -85,11 +85,17 @@ func (t *SkillManageTool) Execute(ctx context.Context, args map[string]any) *Res
 	}
 }
 
+// maxSkillContentSize limits SKILL.md content to 100KB to prevent abuse.
+const maxSkillContentSize = 100 * 1024
+
 // executeCreate writes a new skill from a SKILL.md content string.
 func (t *SkillManageTool) executeCreate(ctx context.Context, args map[string]any) *Result {
 	content, _ := args["content"].(string)
 	if strings.TrimSpace(content) == "" {
 		return ErrorResult("content is required for action=create")
+	}
+	if len(content) > maxSkillContentSize {
+		return ErrorResult(fmt.Sprintf("content too large (%d bytes, max %d)", len(content), maxSkillContentSize))
 	}
 
 	// Security scan before any disk write
@@ -219,6 +225,12 @@ func (t *SkillManageTool) executePatch(ctx context.Context, args map[string]any)
 		return ErrorResult(fmt.Sprintf("cannot manage system skill %q", slug))
 	}
 
+	// Ownership check: only the skill owner can patch
+	userID := store.UserIDFromContext(ctx)
+	if ownerID, found := t.skills.GetSkillOwnerIDBySlug(slug); found && ownerID != userID {
+		return ErrorResult(fmt.Sprintf("cannot manage skill %q: you are not the owner", slug))
+	}
+
 	// Read current SKILL.md from latest version
 	current, err := os.ReadFile(info.Path)
 	if err != nil {
@@ -237,7 +249,11 @@ func (t *SkillManageTool) executePatch(ctx context.Context, args map[string]any)
 	}
 
 	oldVer := info.Version
-	newVer := t.skills.GetNextVersion(slug)
+	newVer, commitLock, lockErr := t.skills.GetNextVersionLocked(ctx, slug)
+	if lockErr != nil {
+		return ErrorResult(fmt.Sprintf("failed to lock version: %v", lockErr))
+	}
+	defer commitLock() //nolint:errcheck
 	destDir := filepath.Join(t.base, slug, fmt.Sprintf("%d", newVer))
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return ErrorResult(fmt.Sprintf("failed to create new version directory: %v", err))
@@ -299,6 +315,12 @@ func (t *SkillManageTool) executeDelete(ctx context.Context, args map[string]any
 		return ErrorResult(fmt.Sprintf("cannot manage system skill %q", slug))
 	}
 
+	// Ownership check: only the skill owner can delete
+	deleteUserID := store.UserIDFromContext(ctx)
+	if ownerID, found := t.skills.GetSkillOwnerIDBySlug(slug); found && ownerID != deleteUserID {
+		return ErrorResult(fmt.Sprintf("cannot manage skill %q: you are not the owner", slug))
+	}
+
 	// Soft-delete on disk: move to .trash/<slug>.<unix-timestamp>
 	trashDir := filepath.Join(t.base, ".trash")
 	if err := os.MkdirAll(trashDir, 0755); err != nil {
@@ -331,12 +353,22 @@ func (t *SkillManageTool) executeDelete(ctx context.Context, args map[string]any
 	return NewResult(fmt.Sprintf("Skill %q archived and removed from search.", slug))
 }
 
+// maxCopySize limits total companion file copy to 20MB (matching publish_skill).
+const maxCopySize = 20 << 20
+
 // copyOtherFiles copies all files from srcDir to dstDir except SKILL.md.
 // Used by patch to carry companion files (scripts, assets) into the new version directory.
+// Uses WalkDir (not Walk) so symlinks are detected via DirEntry.Type() before Stat follows them.
+// Enforces a 20MB total size limit.
 func copyOtherFiles(srcDir, dstDir string) error {
-	return filepath.Walk(srcDir, func(path string, info os.FileInfo, err error) error {
+	var totalSize int64
+	return filepath.WalkDir(srcDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+		// Skip symlinks — WalkDir exposes the raw type before following
+		if d.Type()&os.ModeSymlink != 0 {
+			return nil
 		}
 		rel, err := filepath.Rel(srcDir, path)
 		if err != nil {
@@ -345,8 +377,20 @@ func copyOtherFiles(srcDir, dstDir string) error {
 		if rel == "." || rel == "SKILL.md" {
 			return nil
 		}
-		if info.IsDir() {
+		// Skip path traversal attempts
+		if strings.Contains(rel, "..") {
+			return nil
+		}
+		if d.IsDir() {
 			return os.MkdirAll(filepath.Join(dstDir, rel), 0755)
+		}
+		fi, err := d.Info()
+		if err != nil {
+			return err
+		}
+		totalSize += fi.Size()
+		if totalSize > maxCopySize {
+			return fmt.Errorf("companion files exceed %d bytes limit", maxCopySize)
 		}
 		src, err := os.Open(path)
 		if err != nil {
