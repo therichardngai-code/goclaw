@@ -499,8 +499,10 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 	var teamTaskCreates int // count of team_tasks action=create calls
 	var teamTaskSpawns int  // count of spawn calls with team_task_id
 
-	// Skill evolution: budget pressure nudge state (sent at most once each per run).
-	var skillNudge70Sent, skillNudge90Sent bool
+	// Skill evolution: postscript state (sent at most once per run).
+	// Budget pressure nudges (70%/90%) removed — they hijack LLM focus mid-task,
+	// causing the model to summarize early instead of completing the user's request.
+	// The postscript fires only after the loop exits, which is safe.
 	var skillPostscriptSent bool
 
 	// Member progress nudge: remind dispatched members to report progress (every 6 iterations).
@@ -541,26 +543,6 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 		iteration++
 
 		slog.Debug("agent iteration", "agent", l.id, "iteration", iteration, "messages", len(messages))
-
-		// Skill evolution: budget pressure nudges at 70% and 90% of iteration budget.
-		// Ephemeral (in-memory only, not persisted to session) — LLM sees them during this run only.
-		if l.skillEvolve && maxIter > 0 {
-			locale := store.LocaleFromContext(ctx)
-			iterPct := float64(iteration) / float64(maxIter)
-			if iterPct >= 0.90 && !skillNudge90Sent {
-				skillNudge90Sent = true
-				messages = append(messages, providers.Message{
-					Role:    "user",
-					Content: i18n.T(locale, i18n.MsgSkillNudge90Pct),
-				})
-			} else if iterPct >= 0.70 && !skillNudge70Sent {
-				skillNudge70Sent = true
-				messages = append(messages, providers.Message{
-					Role:    "user",
-					Content: i18n.T(locale, i18n.MsgSkillNudge70Pct),
-				})
-			}
-		}
 
 		// Member progress nudge: remind to report progress every 6 iterations.
 		// Suggests percent based on iteration ratio — model can adjust but has a baseline.
