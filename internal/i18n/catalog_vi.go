@@ -175,7 +175,7 @@ func init() {
 		MsgToolTeamMessage:     "Gửi tin nhắn trực tiếp hoặc broadcast đến đồng đội trong nhóm agent",
 
 		MsgSkillNudgePostscript: "Tác vụ này cần nhiều bước. Bạn muốn tôi lưu quy trình này thành kỹ năng tái sử dụng không? Trả lời **\"lưu kỹ năng\"** hoặc **\"bỏ qua\"**.",
-		MsgSkillNudge70Pct:      "[System] Bạn đã dùng 70% ngân sách vòng lặp. Cân nhắc xem các mẫu trong phiên này có nên lưu thành kỹ năng không.",
-		MsgSkillNudge90Pct:      "[System] Bạn đã dùng 90% ngân sách vòng lặp. Nếu phiên này có quy trình tái sử dụng, hãy cân nhắc lưu thành kỹ năng trước khi hoàn thành.",
+		MsgSkillNudge70Pct:      "[System] Ghi chú ngân sách: đã dùng 70% vòng lặp. Tiếp tục tập trung hoàn thành yêu cầu của người dùng và cung cấp kết quả đầy đủ. Sau khi hoàn thành, có thể cân nhắc lưu quy trình thành kỹ năng.",
+		MsgSkillNudge90Pct:      "[System] Ghi chú ngân sách: đã dùng 90% vòng lặp. Ưu tiên hoàn thành và trình bày đầy đủ kết quả theo yêu cầu người dùng. Việc tạo kỹ năng có thể làm sau.",
 	})
 }

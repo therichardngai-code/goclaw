@@ -175,7 +175,7 @@ func init() {
 		MsgToolTeamMessage:     "Send a direct message or broadcast to teammates in the agent team",
 
 		MsgSkillNudgePostscript: "This task involved several steps. Want me to save the process as a reusable skill? Reply **\"save as skill\"** or **\"skip\"**.",
-		MsgSkillNudge70Pct:      "[System] You are at 70% of your iteration budget. Consider whether any patterns from this session would make a good skill.",
-		MsgSkillNudge90Pct:      "[System] You are at 90% of your iteration budget. If this session involved reusable patterns, consider saving them as a skill before completing.",
+		MsgSkillNudge70Pct:      "[System] Budget note: 70% of iterations used. Continue focusing on the user's request and deliver complete output. After completing the task, you may consider saving reusable patterns as a skill.",
+		MsgSkillNudge90Pct:      "[System] Budget note: 90% of iterations used. Prioritize completing and delivering the user's requested output fully. Skill creation can happen after the task is done.",
 	})
 }
