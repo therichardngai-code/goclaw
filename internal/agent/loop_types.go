@@ -140,6 +140,7 @@ type Loop struct {
 
 	// Budget enforcement: monthly spending limit in cents (0 = unlimited)
 	budgetMonthlyCents int
+	tenantBudgetCents  int // tenant-wide monthly budget (0 = unlimited)
 	tracingStore store.TracingStore
 
 	// Memory store for extractive memory fallback (writes directly when LLM flush fails)
@@ -267,6 +268,7 @@ type LoopConfig struct {
 
 	// Budget enforcement
 	BudgetMonthlyCents int
+	TenantBudgetCents  int // tenant-wide monthly budget (0 = unlimited)
 	TracingStore store.TracingStore
 
 	// Memory store for extractive memory fallback (writes directly when LLM flush fails)
@@ -360,6 +362,7 @@ func NewLoop(cfg LoopConfig) *Loop {
 		mediaStore:             cfg.MediaStore,
 		modelPricing:           cfg.ModelPricing,
 		budgetMonthlyCents:     cfg.BudgetMonthlyCents,
+		tenantBudgetCents:      cfg.TenantBudgetCents,
 		tracingStore:           cfg.TracingStore,
 		memStore:               cfg.MemoryStore,
 	}

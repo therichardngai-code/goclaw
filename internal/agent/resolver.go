@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -390,6 +391,7 @@ func NewManagedResolver(deps ResolverDeps) ResolverFunc {
 			MediaStore:             deps.MediaStore,
 			ModelPricing:           deps.ModelPricing,
 			BudgetMonthlyCents:     derefInt(ag.BudgetMonthlyCents),
+			TenantBudgetCents:      resolveTenantBudget(deps.TenantStore, ag.TenantID),
 			TracingStore:           deps.TracingStore,
 			MemoryStore:            deps.MemoryStore,
 		})
@@ -428,6 +430,30 @@ func resolveTenantSlug(ts store.TenantStore, tenantID uuid.UUID) string {
 		return tenantID.String()
 	}
 	return tenant.Slug
+}
+
+// resolveTenantBudget reads budget_monthly_cents from tenant settings JSONB.
+// Returns 0 (unlimited) if tenant store is nil, tenant not found, or setting not configured.
+func resolveTenantBudget(ts store.TenantStore, tenantID uuid.UUID) int {
+	if ts == nil || tenantID == uuid.Nil {
+		return 0
+	}
+	tenant, err := ts.GetTenant(store.WithCrossTenant(context.Background()), tenantID)
+	if err != nil || tenant == nil || tenant.Settings == nil {
+		return 0
+	}
+	// Settings is json.RawMessage — unmarshal to map
+	var settings map[string]any
+	if len(tenant.Settings) == 0 {
+		return 0
+	}
+	if json.Unmarshal(tenant.Settings, &settings) != nil {
+		return 0
+	}
+	if v, ok := settings["budget_monthly_cents"].(float64); ok && v > 0 {
+		return int(v)
+	}
+	return 0
 }
 
 func derefInt(p *int) int {

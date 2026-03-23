@@ -490,6 +490,21 @@ func (s *PGTracingStore) GetMonthlyAgentCost(ctx context.Context, agentID uuid.U
 	return cost, err
 }
 
+// GetMonthlyTenantCost returns the total cost for all runs in a tenant for a given month.
+// Used by tenant-scoped budget enforcement in the agent loop.
+func (s *PGTracingStore) GetMonthlyTenantCost(ctx context.Context, tenantID uuid.UUID, year int, month time.Month) (float64, error) {
+	start := time.Date(year, month, 1, 0, 0, 0, 0, time.UTC)
+	end := start.AddDate(0, 1, 0)
+
+	var cost float64
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(total_cost), 0) FROM traces
+		 WHERE tenant_id = $1 AND created_at >= $2 AND created_at < $3 AND parent_trace_id IS NULL`,
+		tenantID, start, end,
+	).Scan(&cost)
+	return cost, err
+}
+
 func (s *PGTracingStore) GetCostSummary(ctx context.Context, opts store.CostSummaryOpts) ([]store.CostSummaryRow, error) {
 	var conditions []string
 	var args []any

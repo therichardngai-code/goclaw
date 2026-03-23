@@ -143,5 +143,6 @@ type TracingStore interface {
 
 	// Cost aggregation
 	GetMonthlyAgentCost(ctx context.Context, agentID uuid.UUID, year int, month time.Month) (float64, error)
+	GetMonthlyTenantCost(ctx context.Context, tenantID uuid.UUID, year int, month time.Month) (float64, error)
 	GetCostSummary(ctx context.Context, opts CostSummaryOpts) ([]CostSummaryRow, error)
 }

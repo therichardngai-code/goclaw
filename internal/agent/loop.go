@@ -561,6 +561,22 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (*RunResult, error) 
 		}
 	}
 
+	// Tenant budget check: monthly spending limit across all agents in the tenant.
+	if l.tenantBudgetCents > 0 && l.tracingStore != nil {
+		tenantID := store.TenantIDFromContext(ctx)
+		if tenantID != uuid.Nil {
+			now := time.Now().UTC()
+			tSpent, tErr := l.tracingStore.GetMonthlyTenantCost(ctx, tenantID, now.Year(), now.Month())
+			if tErr == nil {
+				tSpentCents := int(tSpent * 100)
+				if tSpentCents >= l.tenantBudgetCents {
+					slog.Warn("tenant budget exceeded", "tenant", tenantID.String(), "spent_cents", tSpentCents, "budget_cents", l.tenantBudgetCents)
+					return nil, fmt.Errorf("monthly budget exceeded ($%.2f / $%.2f)", tSpent, float64(l.tenantBudgetCents)/100)
+				}
+			}
+		}
+	}
+
 	for iteration < maxIter {
 		iteration++
 
