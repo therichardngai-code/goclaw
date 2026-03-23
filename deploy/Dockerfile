@@ -1,5 +1,5 @@
 # ── Build stage ──────────────────────────────────────────────
-FROM golang:1.24-bookworm AS builder
+FROM golang:1.26-bookworm AS builder
 WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
@@ -26,7 +26,6 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && rm -rf /var/lib/apt/lists/*
 
 # Common skill dependencies (pre-installed to avoid install on every agent run)
-# Python: pypdf, google-genai, requests, beautifulsoup4
 RUN pip3 install --break-system-packages --no-cache-dir \
     pypdf google-genai requests beautifulsoup4 pillow
 
@@ -47,5 +46,11 @@ COPY --from=builder /build/goclaw /usr/local/bin/goclaw
 COPY --from=builder /build/migrations /app/migrations
 
 WORKDIR /app
+
+# Point GoClaw to migrations dir (binary at /usr/local/bin, migrations at /app/migrations)
+ENV GOCLAW_MIGRATIONS_DIR=/app/migrations
+# Auto-run migrations on startup
+ENV GOCLAW_AUTO_UPGRADE=true
+
 EXPOSE 18790
 ENTRYPOINT ["goclaw"]
