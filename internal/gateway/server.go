@@ -59,6 +59,7 @@ type Server struct {
 	storageHandler          *httpapi.StorageHandler          // storage file management
 	mediaUploadHandler      *httpapi.MediaUploadHandler      // media upload endpoint
 	mediaServeHandler       *httpapi.MediaServeHandler       // media serve endpoint
+	sandboxPortsHandler    *httpapi.SandboxPortsHandler    // sandbox viewport ports
 	activityHandler         *httpapi.ActivityHandler         // activity audit log API
 	usageHandler            *httpapi.UsageHandler            // usage analytics API
 	apiKeysHandler     *httpapi.APIKeysHandler      // API key management
@@ -277,6 +278,10 @@ func (s *Server) BuildMux() *http.ServeMux {
 	// Media serve endpoint (available in all modes)
 	if s.mediaServeHandler != nil {
 		s.mediaServeHandler.RegisterRoutes(mux)
+	}
+
+	if s.sandboxPortsHandler != nil {
+		s.sandboxPortsHandler.RegisterRoutes(mux)
 	}
 
 	if s.apiKeysHandler != nil {
@@ -554,6 +559,9 @@ func (s *Server) SetMediaServeHandler(h *httpapi.MediaServeHandler) { s.mediaSer
 
 // SetMemoryHandler sets the memory management handler.
 func (s *Server) SetMemoryHandler(h *httpapi.MemoryHandler) { s.memoryHandler = h }
+
+// SetSandboxPortsHandler sets the sandbox viewport ports handler.
+func (s *Server) SetSandboxPortsHandler(h *httpapi.SandboxPortsHandler) { s.sandboxPortsHandler = h }
 
 // SetKnowledgeGraphHandler sets the knowledge graph handler.
 func (s *Server) SetKnowledgeGraphHandler(h *httpapi.KnowledgeGraphHandler) { s.kgHandler = h }

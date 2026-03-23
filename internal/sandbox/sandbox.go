@@ -80,6 +80,10 @@ type Config struct {
 	IdleHours        int `json:"idle_hours,omitempty"`         // prune containers idle > N hours (default 24)
 	MaxAgeDays       int `json:"max_age_days,omitempty"`       // prune containers older than N days (default 7)
 	PruneIntervalMin int `json:"prune_interval_min,omitempty"` // check interval in minutes (default 5)
+
+	// Viewport: expose noVNC (6080) + ttyd (7681) ports for live browser/terminal viewing.
+	// Ports bind to 127.0.0.1 — accessed via GoClaw HTTP proxy only.
+	ExposeBrowserPorts bool `json:"expose_browser_ports,omitempty"`
 }
 
 // DefaultConfig returns sensible defaults matching TS sandbox defaults.
@@ -213,6 +217,10 @@ type Manager interface {
 
 	// Stats returns info about active sandboxes.
 	Stats() map[string]any
+
+	// GetPorts returns the viewport ports (VNC, ttyd) for an active sandbox by key.
+	// Returns (0, 0) if no sandbox is active for the key.
+	GetPorts(key string) (vncPort, ttydPort int)
 }
 
 // ErrSandboxDisabled is returned when sandbox mode is "off".

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"net"
 	"os/exec"
 	"strings"
 	"sync"
@@ -33,7 +34,16 @@ type DockerSandbox struct {
 	createdAt   time.Time
 	lastUsed    time.Time
 	mu          sync.Mutex // protects lastUsed
+	// Exposed ports for live viewport (noVNC + ttyd). 0 = not exposed.
+	vncPort  int
+	ttydPort int
 }
+
+// VNCPort returns the host-mapped noVNC port (0 if not exposed).
+func (s *DockerSandbox) VNCPort() int { return s.vncPort }
+
+// TTYDPort returns the host-mapped ttyd port (0 if not exposed).
+func (s *DockerSandbox) TTYDPort() int { return s.ttydPort }
 
 // newDockerSandbox creates and starts a Docker container for sandboxed execution.
 // Matching TS buildSandboxCreateArgs() + createSandboxContainer().
@@ -98,6 +108,21 @@ func newDockerSandbox(ctx context.Context, name string, cfg Config, workspace st
 		args = append(args, "-e", k+"="+v)
 	}
 
+	// Viewport ports: expose noVNC (6080) + ttyd (7681) if sandbox image supports them.
+	// Ports bind to 127.0.0.1 only — accessed via GoClaw HTTP proxy, never directly.
+	var vncPort, ttydPort int
+	if cfg.ExposeBrowserPorts {
+		vncPort = findFreePort()
+		ttydPort = findFreePort()
+		if vncPort > 0 {
+			args = append(args, "-p", fmt.Sprintf("127.0.0.1:%d:6080", vncPort))
+		}
+		if ttydPort > 0 {
+			args = append(args, "-p", fmt.Sprintf("127.0.0.1:%d:7681", ttydPort))
+		}
+		slog.Debug("sandbox viewport ports", "vnc", vncPort, "ttyd", ttydPort)
+	}
+
 	// Image + keep-alive command
 	args = append(args, cfg.Image, "sleep", "infinity")
 
@@ -136,6 +161,8 @@ func newDockerSandbox(ctx context.Context, name string, cfg Config, workspace st
 		workspace:   workspace,
 		createdAt:   now,
 		lastUsed:    now,
+		vncPort:     vncPort,
+		ttydPort:    ttydPort,
 	}, nil
 }
 
@@ -326,6 +353,17 @@ func (m *DockerManager) Stats() map[string]any {
 	}
 }
 
+// GetPorts returns viewport ports for an active sandbox by key.
+func (m *DockerManager) GetPorts(key string) (vncPort, ttydPort int) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	sb, ok := m.sandboxes[key]
+	if !ok {
+		return 0, 0
+	}
+	return sb.vncPort, sb.ttydPort
+}
+
 // Stop signals the pruning goroutine to stop.
 // Called during shutdown before ReleaseAll.
 func (m *DockerManager) Stop() {
@@ -460,4 +498,15 @@ func (lb *limitedBuffer) Write(p []byte) (int, error) {
 
 func (lb *limitedBuffer) String() string {
 	return lb.buf.String()
+}
+
+// findFreePort asks the OS for an available TCP port on 127.0.0.1.
+func findFreePort() int {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	l.Close()
+	return port
 }

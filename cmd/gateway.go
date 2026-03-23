@@ -425,6 +425,11 @@ func runGateway() {
 		server.SetMediaServeHandler(httpapi.NewMediaServeHandler(mediaStore))
 	}
 
+	// Sandbox viewport ports — serves VNC + ttyd port info for live browser/terminal viewing.
+	if sandboxMgr != nil {
+		server.SetSandboxPortsHandler(httpapi.NewSandboxPortsHandler(sandboxMgr))
+	}
+
 	// Seed + apply builtin tool disables
 	if pgStores.BuiltinTools != nil {
 		seedBuiltinTools(context.Background(), pgStores.BuiltinTools)
