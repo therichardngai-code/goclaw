@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: goclaw
+      POSTGRES_USER: goclaw
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-goclaw_dev}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    shm_size: 256mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U goclaw"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  goclaw:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgres://goclaw:${DB_PASSWORD:-goclaw_dev}@postgres:5432/goclaw?sslmode=disable
+      - GOCLAW_CONFIG=/app/config.json
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - workspace:/app/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "127.0.0.1:18790:18790"
+    networks:
+      - goclaw-net
+
+volumes:
+  pgdata:
+  workspace:
+
+networks:
+  goclaw-net:
