@@ -44,6 +44,7 @@ RUN curl -fsSL https://get.docker.com | sh \
 # GoClaw binary + migrations
 COPY --from=builder /build/goclaw /usr/local/bin/goclaw
 COPY --from=builder /build/migrations /app/migrations
+COPY --from=builder /build/skills /app/bundled-skills
 
 WORKDIR /app
 
