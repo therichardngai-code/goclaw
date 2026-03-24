@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
 )
@@ -109,9 +110,14 @@ func (t *SessionsSendTool) Execute(ctx context.Context, args map[string]any) *Re
 // ============================================================
 
 func resolveAgentIDString(ctx context.Context) string {
+	// Prefer agent key (string identifier used in session keys: "agent:<key>:...")
+	if key := store.AgentKeyFromContext(ctx); key != "" {
+		return key
+	}
+	// Fallback to UUID string (backward compat)
 	id := store.AgentIDFromContext(ctx)
-	if id.String() == "00000000-0000-0000-0000-000000000000" {
-		return "" // no agent ID in context
+	if id == uuid.Nil {
+		return ""
 	}
 	return id.String()
 }
