@@ -289,6 +289,7 @@ func requireAuth(minRole permissions.Role, next http.HandlerFunc) http.HandlerFu
 		}
 		if auth.CrossTenant && auth.TenantID != uuid.Nil {
 			// Cross-tenant admin with tenant scope: filter data by chosen tenant
+			ctx = store.WithCrossTenant(ctx)
 			ctx = store.WithTenantID(ctx, auth.TenantID)
 			slog.Debug("security.http_auth_resolved",
 				"path", r.URL.Path,
@@ -297,6 +298,7 @@ func requireAuth(minRole permissions.Role, next http.HandlerFunc) http.HandlerFu
 			)
 		} else if auth.CrossTenant {
 			// Auto-scope to MasterTenantID so all operations use a concrete tenant.
+			ctx = store.WithCrossTenant(ctx)
 			ctx = store.WithTenantID(ctx, store.MasterTenantID)
 			slog.Debug("security.http_auth_resolved",
 				"path", r.URL.Path,
