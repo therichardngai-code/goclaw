@@ -132,8 +132,8 @@ func (m *Manager) Start(ctx context.Context) error {
 			Set("disable-gpu").
 			Set("no-first-run").
 			Set("no-default-browser-check").
-			Set("window-size", "1280,720").
-			Set("start-maximized")
+			Set("window-size", "1920,1080").
+			Set("window-position", "0,0")
 
 		u, err := l.Launch()
 		if err != nil {
