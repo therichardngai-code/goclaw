@@ -47,8 +47,13 @@ func WithShellDenyGroups(ctx context.Context, groups map[string]bool) context.Co
 
 // ShellDenyGroupsFromContext returns shell deny group overrides from the context, or nil.
 func ShellDenyGroupsFromContext(ctx context.Context) map[string]bool {
-	v, _ := ctx.Value(ShellDenyGroupsKey).(map[string]bool)
-	return v
+	if v, _ := ctx.Value(ShellDenyGroupsKey).(map[string]bool); v != nil {
+		return v
+	}
+	if rc := RunContextFromCtx(ctx); rc != nil {
+		return rc.ShellDenyGroups
+	}
+	return nil
 }
 
 // WithUserID returns a new context with the given user ID.
@@ -58,8 +63,11 @@ func WithUserID(ctx context.Context, id string) context.Context {
 
 // UserIDFromContext extracts the user ID from context. Returns "" if not set.
 func UserIDFromContext(ctx context.Context) string {
-	if v, ok := ctx.Value(UserIDKey).(string); ok {
+	if v, ok := ctx.Value(UserIDKey).(string); ok && v != "" {
 		return v
+	}
+	if rc := RunContextFromCtx(ctx); rc != nil {
+		return rc.UserID
 	}
 	return ""
 }
@@ -71,23 +79,13 @@ func WithAgentID(ctx context.Context, id uuid.UUID) context.Context {
 
 // AgentIDFromContext extracts the agent UUID from context. Returns uuid.Nil if not set.
 func AgentIDFromContext(ctx context.Context) uuid.UUID {
-	if v, ok := ctx.Value(AgentIDKey).(uuid.UUID); ok {
+	if v, ok := ctx.Value(AgentIDKey).(uuid.UUID); ok && v != uuid.Nil {
 		return v
+	}
+	if rc := RunContextFromCtx(ctx); rc != nil {
+		return rc.AgentID
 	}
 	return uuid.Nil
-}
-
-// WithAgentKey returns a new context with the given agent key (string identifier).
-func WithAgentKey(ctx context.Context, key string) context.Context {
-	return context.WithValue(ctx, AgentKeyKey, key)
-}
-
-// AgentKeyFromContext extracts the agent key from context. Returns "" if not set.
-func AgentKeyFromContext(ctx context.Context) string {
-	if v, ok := ctx.Value(AgentKeyKey).(string); ok {
-		return v
-	}
-	return ""
 }
 
 // WithAgentType returns a new context with the given agent type.
@@ -97,8 +95,27 @@ func WithAgentType(ctx context.Context, t string) context.Context {
 
 // AgentTypeFromContext extracts the agent type from context. Returns "" if not set.
 func AgentTypeFromContext(ctx context.Context) string {
-	if v, ok := ctx.Value(AgentTypeKey).(string); ok {
+	if v, ok := ctx.Value(AgentTypeKey).(string); ok && v != "" {
 		return v
+	}
+	if rc := RunContextFromCtx(ctx); rc != nil {
+		return rc.AgentType
+	}
+	return ""
+}
+
+// WithAgentKey returns a new context with the agent key/name (string identifier).
+func WithAgentKey(ctx context.Context, key string) context.Context {
+	return context.WithValue(ctx, AgentKeyKey, key)
+}
+
+// AgentKeyFromContext extracts the agent key from context. Returns "" if not set.
+func AgentKeyFromContext(ctx context.Context) string {
+	if v, ok := ctx.Value(AgentKeyKey).(string); ok && v != "" {
+		return v
+	}
+	if rc := RunContextFromCtx(ctx); rc != nil {
+		return rc.AgentKey
 	}
 	return ""
 }
@@ -110,8 +127,11 @@ func WithSenderID(ctx context.Context, id string) context.Context {
 
 // SenderIDFromContext extracts the sender ID from context. Returns "" if not set.
 func SenderIDFromContext(ctx context.Context) string {
-	if v, ok := ctx.Value(SenderIDKey).(string); ok {
+	if v, ok := ctx.Value(SenderIDKey).(string); ok && v != "" {
 		return v
+	}
+	if rc := RunContextFromCtx(ctx); rc != nil {
+		return rc.SenderID
 	}
 	return ""
 }
@@ -126,6 +146,9 @@ func SelfEvolveFromContext(ctx context.Context) bool {
 	if v, ok := ctx.Value(SelfEvolveKey).(bool); ok {
 		return v
 	}
+	if rc := RunContextFromCtx(ctx); rc != nil {
+		return rc.SelfEvolve
+	}
 	return false
 }
 
@@ -136,8 +159,13 @@ func WithSharedMemory(ctx context.Context) context.Context {
 
 // IsSharedMemory returns true if memory should be shared across users.
 func IsSharedMemory(ctx context.Context) bool {
-	v, _ := ctx.Value(SharedMemoryKey).(bool)
-	return v
+	if v, ok := ctx.Value(SharedMemoryKey).(bool); ok {
+		return v
+	}
+	if rc := RunContextFromCtx(ctx); rc != nil {
+		return rc.SharedMemory
+	}
+	return false
 }
 
 // MemoryUserID returns the userID to use for memory operations.
@@ -165,8 +193,13 @@ func WithSharedKG(ctx context.Context) context.Context {
 
 // IsSharedKG returns true if the knowledge graph should be shared across users.
 func IsSharedKG(ctx context.Context) bool {
-	v, _ := ctx.Value(SharedKGKey).(bool)
-	return v
+	if v, ok := ctx.Value(SharedKGKey).(bool); ok {
+		return v
+	}
+	if rc := RunContextFromCtx(ctx); rc != nil {
+		return rc.SharedKG
+	}
+	return false
 }
 
 // WithLocale returns a new context with the given locale.
@@ -190,8 +223,11 @@ func WithTenantID(ctx context.Context, id uuid.UUID) context.Context {
 // TenantIDFromContext extracts the tenant UUID from context.
 // Returns uuid.Nil if not set (fail-closed — callers must check).
 func TenantIDFromContext(ctx context.Context) uuid.UUID {
-	if v, ok := ctx.Value(TenantIDKey).(uuid.UUID); ok {
+	if v, ok := ctx.Value(TenantIDKey).(uuid.UUID); ok && v != uuid.Nil {
 		return v
+	}
+	if rc := RunContextFromCtx(ctx); rc != nil {
+		return rc.TenantID
 	}
 	return uuid.Nil
 }
