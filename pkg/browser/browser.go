@@ -132,8 +132,7 @@ func (m *Manager) Start(ctx context.Context) error {
 			Set("disable-gpu").
 			Set("no-first-run").
 			Set("no-default-browser-check").
-			Set("window-size", "1920,1080").
-			Set("window-position", "0,0")
+			Set("kiosk")
 
 		u, err := l.Launch()
 		if err != nil {
