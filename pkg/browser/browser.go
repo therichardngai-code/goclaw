@@ -131,7 +131,9 @@ func (m *Manager) Start(ctx context.Context) error {
 			Headless(m.headless).
 			Set("disable-gpu").
 			Set("no-first-run").
-			Set("no-default-browser-check")
+			Set("no-default-browser-check").
+			Set("window-size", "1280,720").
+			Set("start-maximized")
 
 		u, err := l.Launch()
 		if err != nil {
