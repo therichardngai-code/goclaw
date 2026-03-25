@@ -19,3 +19,4 @@ tmp/
 ui/
 plans/
 skills-store/
+!ui/web/dist/
