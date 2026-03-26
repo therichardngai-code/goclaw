@@ -132,7 +132,7 @@ func (m *Manager) Start(ctx context.Context) error {
 			Set("disable-gpu").
 			Set("no-first-run").
 			Set("no-default-browser-check").
-			Set("start-maximized").
+			Set("kiosk").
 			Set("window-size", "1280,720").
 			Set("window-position", "0,0")
 
