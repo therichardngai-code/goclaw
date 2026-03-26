@@ -18,8 +18,10 @@ export function TenantSelectorPage() {
   const handleSelect = (slug: string) => {
     localStorage.setItem(LOCAL_STORAGE_KEYS.TENANT_ID, slug);
     useAuthStore.getState().setTenantSelected(true);
-    // Reload to reconnect WS with the new tenant_scope
-    window.location.replace(from || ROUTES.OVERVIEW);
+    // Hard reload to reconnect WS with new tenant_scope.
+    // Respect basename when embedded under /admin in ClawBoxes.
+    const basename = document.querySelector<HTMLMetaElement>('meta[name="goclaw-basename"]')?.content ?? '';
+    window.location.replace(basename + (from || ROUTES.OVERVIEW));
   };
 
   const handleLogout = () => {
