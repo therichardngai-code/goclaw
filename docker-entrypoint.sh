@@ -74,10 +74,17 @@ fi
 
 # Copy Claude CLI credentials from root-owned read-only mount to goclaw-accessible location.
 # /app/.claude is a symlink → /app/data/.claude (writable volume, see Dockerfile).
-# Uses install(1) for atomic copy with correct ownership+permissions (no temp file needed).
+# Uses su-exec to copy as goclaw user (who owns /app/data/.claude) because
+# install -o fails under no-new-privileges + sandbox overlay cap_add override.
 if [ -f /app/.claude-host/.credentials.json ]; then
   (mkdir -p /app/data/.claude \
-    && install -m 600 -o goclaw -g goclaw /app/.claude-host/.credentials.json /app/data/.claude/.credentials.json \
+    && if command -v su-exec >/dev/null 2>&1 && [ "$(id -u)" = "0" ]; then
+         su-exec goclaw cp /app/.claude-host/.credentials.json /app/data/.claude/.credentials.json \
+           && su-exec goclaw chmod 600 /app/data/.claude/.credentials.json
+       else
+         cp /app/.claude-host/.credentials.json /app/data/.claude/.credentials.json \
+           && chmod 600 /app/data/.claude/.credentials.json
+       fi \
     && echo "Claude CLI credentials synced from host.") || echo "WARNING: Claude credentials copy failed (non-fatal)"
 fi
 
